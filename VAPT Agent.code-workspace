@@ -1,0 +1,16 @@
+{
+  "folders": [
+    {
+      "name": "VAPT Agent",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv311/bin/python",
+    "terminal.integrated.cwd": "${workspaceFolder}",
+    "files.exclude": {
+      "models": true,
+      "tools/ollama": true
+    }
+  }
+}

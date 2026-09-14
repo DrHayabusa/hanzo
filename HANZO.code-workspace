@@ -1,0 +1,4 @@
+{
+  "folders": [{"name": "HANZO", "path": "."}],
+  "settings": {"python.defaultInterpreterPath": "${workspaceFolder}/.venv311/bin/python"}
+}

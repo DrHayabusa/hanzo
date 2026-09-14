@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Hanzo authorized security validation console powered by HexStrike AI">
+  <title>Hanzo // Authorized Security Lab</title>
+  <link rel="icon" type="image/svg+xml" href="/static/hanzo-emblem.svg">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="noise" aria-hidden="true"></div>
+  <div class="grid-layer" aria-hidden="true"></div>
+  <div class="scanline" aria-hidden="true"></div>
+  <aside class="sidebar">
+    <a class="brand" href="#overview" aria-label="Hanzo home">
+      <span class="brand-logo-shell"><img class="brand-logo" src="/static/hanzo-emblem.svg" alt="Hanzo human shinobi and katana emblem"></span>
+      <span><strong id="brandName">HANZO</strong><small>SECURITY WORKSPACE</small></span>
+    </a>
+    <button class="workspace-switch" data-open-view="lab"><span>◈ &nbsp; Detection lab</span><small>LOCAL</small></button>
+    <nav aria-label="Primary navigation"><span class="nav-label">WORKSPACE</span>
+      <button class="nav-item active" data-view="overview"><span>⌂</span>Overview</button>
+      <button class="nav-item" data-view="assessment"><span>⊕</span>Test target</button>
+      <button class="nav-item" data-view="exercises"><span>ϟ</span>Lab exercises</button>
+      <button class="nav-item" data-view="reports"><span>▤</span>Reports <small id="reportCount">0</small></button>
+      <button class="nav-item" data-view="lab"><span>◇</span>Lab network</button>
+      <span class="nav-label divider">CONTROL PLANE</span>
+      <button class="nav-item" data-view="integrations"><span>▱</span>MCP servers</button>
+      <button class="nav-item" data-view="tools"><span>⚒</span>Security tools</button>
+      <button class="nav-item" data-view="activity"><span>≋</span>Running jobs</button>
+      <button class="nav-item" data-view="copilot"><span>◉</span>AI assistant</button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="status-line"><i id="statusDot"></i><span id="statusLabel">Connecting</span></div>
+      <small>Private workspace · Your infrastructure</small>
+    </div>
+  </aside>
+
+  <main>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Workspace <span>/</span></p>
+        <h1 id="pageTitle">Overview</h1>
+      </div>
+      <div class="top-actions">
+        <span class="clock" id="clock">--:--:-- GST</span>
+        <span class="lab-chip">ISOLATED <b>10.20.39.0/24</b></span>
+        <button class="icon-button" id="refreshButton" aria-label="Refresh dashboard">↻</button>
+      </div>
+    </header>
+
+    <section class="view active" id="overview">
+      <div class="section-heading"><div><span class="section-index">YOUR SECURITY WORKSPACE</span><h2>Clarity before impact<span class="gold">.</span></h2><p>Define the scope. Test with intent. Keep the evidence.</p></div><button class="secondary-button" data-open-view="reports">View reports ↗</button></div>
+      <div class="hero">
+        <div class="shinobi-scenery" aria-hidden="true"><span class="gold-moon"></span><span class="torii"><i></i><b></b></span><span class="pagoda"></span><span class="pagoda pagoda-two"></span><span class="pine-tree"><i></i><b></b></span><span class="pine-tree pine-two"><i></i><b></b></span><span class="temple-roof"></span></div>
+        <div>
+          <span class="section-index">HANZO / LAB OPERATIONS</span>
+          <h2>What are we testing today?</h2>
+          <p>From reconnaissance to detection evidence. Your tools, your AI, one workspace.</p>
+          <form id="quickForm"><label for="quickTarget" class="sr-only">Website URL, asset IP or CVE ID</label><input id="quickTarget" placeholder="Website URL, asset IP, or CVE ID" autocomplete="off" required><div class="hero-actions"><span class="scope-caption">⊕ &nbsp; Defined scope &nbsp; · &nbsp; Evidence included</span><button class="primary-button" type="submit">New assessment <span>→</span></button></div></form>
+        </div>
+        <div class="radar-wrap" aria-hidden="true">
+          <div class="katana-cross"><i></i><b></b></div>
+          <div class="radar"><span></span><i></i><b></b><img class="radar-logo" src="/static/hanzo-emblem.svg" alt=""></div>
+          <div class="radar-label">QUIETER SYSTEMS.<br>STRONGER DEFENSES.</div>
+        </div>
+      </div>
+
+      <div class="metric-grid">
+        <article class="metric"><span>ENGINE</span><strong id="engineStatus">—</strong><small id="engineMessage">Checking API</small></article>
+        <article class="metric"><span>INSTALLED TOOLS</span><strong id="toolsOnline">—</strong><small id="toolsRatio">of — detected</small></article>
+        <article class="metric"><span>ACTIVE TASKS</span><strong id="activeTasks">—</strong><small>managed processes</small></article>
+        <article class="metric"><span>UPTIME</span><strong id="uptime">—</strong><small>current session</small></article>
+      </div>
+
+      <div class="overview-grid"><article class="panel"><div class="panel-head"><h3>Recent assessments</h3><button class="text-button" data-open-view="reports">View all →</button></div><div class="history-table"><div class="history-row table-head"><span>ASSESSMENT / TARGET</span><span>STATUS</span><span>EVIDENCE</span></div><div id="recentRuns"><div class="empty-compact">No assessments yet. Your first run will appear here.</div></div></div></article><article class="panel"><div class="panel-head"><h3>Connection readiness</h3><span class="pill">LOCAL</span></div><div class="readiness-row"><span>Core integrations</span><strong id="overviewMcp">Checking</strong></div><div class="readiness-row"><span>Local AI</span><strong id="overviewAi">Checking</strong></div><div class="readiness-row"><span>Splunk HEC</span><strong id="overviewTelemetry">Not checked</strong></div><p class="form-note">Validate connections before your lab run. Credentials and service configuration are separate from source installation.</p><button class="text-button" data-open-view="integrations">Manage connections →</button></article></div>
+      <div class="split-grid">
+        <article class="panel">
+          <div class="panel-head"><div><span class="section-index">/ READINESS</span><h3>Capability coverage</h3></div><span id="coveragePercent" class="pill">—</span></div>
+          <div id="categoryBars" class="category-bars"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+        </article>
+        <article class="panel system-panel">
+          <div class="panel-head"><div><span class="section-index">/ HOST</span><h3>Resource telemetry</h3></div><span class="live-tag"><i></i> LIVE</span></div>
+          <div class="system-stats">
+            <div><span>CPU</span><strong id="cpuStat">—</strong></div>
+            <div><span>MEMORY</span><strong id="memoryStat">—</strong></div>
+            <div><span>COMMANDS</span><strong id="commandStat">—</strong></div>
+          </div>
+          <p class="muted" id="lastUpdated">Waiting for first heartbeat…</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="view" id="lab">
+      <div class="section-heading">
+        <div><span class="section-index">/ RANGE TOPOLOGY</span><h2>Detection lab map</h2></div>
+        <button class="primary-button no-margin" id="probeLab">Probe configured services <span>⌁</span></button>
+      </div>
+      <p class="section-explainer"><b>Optional deployment view.</b> This does not run a pentest. It keeps Hanzo, IIS, AD, Linux, pfSense and Splunk addresses visible so test evidence can be matched to the correct telemetry source and detection.</p>
+      <div class="lab-host-bar">
+        <div><span>PHYSICAL HOST</span><strong id="labHostPlatform">Windows</strong></div>
+        <div><span>COMPUTE</span><strong id="labHostCpu">16 cores</strong></div>
+        <div><span>MEMORY</span><strong id="labHostMemory">32 GB</strong></div>
+        <div><span>STORAGE</span><strong id="labHostDisk">1 TB</strong></div>
+        <div><span>NETWORK</span><strong id="labCidr">10.20.39.0/24</strong></div>
+      </div>
+      <div class="lab-layout">
+        <article class="panel topology-panel">
+          <div class="panel-head"><div><span class="section-index">/ VMWARE HOST-ONLY FABRIC</span><h3 id="labName">Detection Engineering Lab</h3></div><span class="pill" id="labNetworkMode">ISOLATED</span></div>
+          <div class="network-core"><span>CONTROL FABRIC</span><strong id="networkCoreCidr">10.20.39.0/24</strong><small>Configured service probes only</small></div>
+          <div id="labNodes" class="lab-nodes"><div class="skeleton card"></div></div>
+        </article>
+        <div class="lab-side">
+          <article class="panel flow-panel">
+            <div class="panel-head"><div><span class="section-index">/ EVIDENCE PIPELINE</span><h3>Activity → detection</h3></div></div>
+            <div id="labFlow" class="lab-flow"></div>
+          </article>
+          <article class="panel guardrail-panel">
+            <span class="section-index">/ RANGE GUARDRAILS</span>
+            <div id="labWarnings" class="lab-warnings"></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="integrations">
+      <div class="section-heading">
+        <div><span class="section-index">/ CONNECTED ADAPTERS</span><h2>MCP servers &amp; integrations</h2></div>
+        <button class="primary-button no-margin" id="validateStack">Validate connections <span>↻</span></button>
+      </div>
+      <div class="hub-summary">
+        <article><span>REGISTERED</span><strong id="hubTotal">—</strong></article>
+        <article><span>READY</span><strong id="hubOnline">—</strong></article>
+        <article><span>SOURCE CLONED</span><strong id="hubInstalled">—</strong></article>
+        <article><span>LLM</span><strong id="hubLlm">CHECKING</strong></article>
+      </div>
+      <div class="hub-grid">
+        <article class="panel integration-panel">
+          <div class="panel-head"><div><span class="section-index">/ ADAPTER REGISTRY</span><h3>Connected systems</h3></div><span class="pill">TRUTHFUL HEALTH</span></div>
+          <div id="integrationCards" class="integration-cards"><div class="skeleton card"></div></div>
+        </article>
+        <article class="panel gate-panel doctrine-panel">
+          <span class="section-index">/ ADAPTER DOCTRINE</span>
+          <h3>One console, isolated runtimes</h3>
+          <p>Hanzo routes work to the smallest suitable adapter. MCP servers are tested with their real protocol; CLIs are self-tested; source-only projects are never mislabeled online.</p>
+          <div class="doctrine-list">
+            <div><span>01</span><p><b>CVE MCP</b> correlates CVE, EPSS and CISA KEV intelligence over stdio.</p></div>
+            <div><span>02</span><p><b>BugHunter</b> classifies the asset and selects focused playbooks.</p></div>
+            <div><span>03</span><p><b>HexStrike</b> selects installed scanners for bounded execution.</p></div>
+            <div><span>04</span><p><b>SQLite evidence</b> preserves workflow results locally for review.</p></div>
+          </div>
+          <button class="secondary-button" id="openAutopilot" type="button">Open assessment →</button>
+        </article>
+      </div>
+    </section>
+
+    <section class="view" id="assessment">
+      <div class="section-heading">
+        <div><span class="section-index">/ AUTHORIZED WORKFLOW</span><h2>Test a target</h2></div>
+        <p>Enter one website URL, hostname, IP address, or CVE ID—then choose the exact stage Hanzo should run.</p>
+      </div>
+      <div class="assessment-grid">
+        <form class="panel scan-form" id="assessmentForm">
+          <span class="section-index">/ 01 DEFINE SCOPE</span>
+          <label for="target">Website URL, hostname, asset IP, or CVE ID</label>
+          <div class="target-input"><span>⌖</span><input id="target" name="target" placeholder="http://10.20.39.11:8080 or CVE-2021-44228" autocomplete="off" required></div>
+          <div class="form-row">
+            <label>Workflow step<select id="workflowPhase"><option value="profile" selected>Profile only</option><option value="recon">Recon</option><option value="bughunter">BugHunter classify</option><option value="cve_triage">CVE intelligence</option><option value="validate">Validate</option><option value="full">Full workflow</option></select></label>
+            <label>Tool limit<select id="maxTools"><option>3</option><option selected>5</option><option>8</option></select></label>
+          </div>
+          <label class="check-row" id="authorizationRow"><input type="checkbox" id="authorization"><span>This asset is mine or explicitly authorized for active testing.</span></label>
+          <button type="submit" class="primary-button autopilot-button" id="runWorkflow">Run selected workflow <span>↗</span></button>
+          <p class="form-note" id="workflowNote">Profile, CVE intelligence and BugHunter classification are non-executing. Recon, Validate and Full can invoke installed scanners and require authorization.</p>
+          <div class="workflow-rail"><span data-stage="profile">PROFILE</span><i></i><span data-stage="classify">CLASSIFY</span><i></i><span data-stage="execute">EXECUTE</span><i></i><span data-stage="evidence">EVIDENCE</span></div>
+        </form>
+        <article class="panel result-panel">
+          <div class="panel-head"><div><span class="section-index">/ EVIDENCE</span><h3>Workflow result</h3></div><button class="text-button" id="copyResult">COPY JSON</button></div>
+          <div id="emptyResult" class="empty-state"><span>⌁</span><strong>Awaiting scope</strong><p>Selected adapter results and the SQLite evidence ID will appear here.</p></div>
+          <div id="loadingResult" class="loading-state hidden"><i></i><span id="loadingText">Running Hanzo workflow…</span></div>
+          <div id="resultSummary" class="result-summary hidden"></div>
+          <pre id="resultJson" class="hidden"></pre>
+        </article>
+      </div>
+    </section>
+
+    <section class="view" id="tools">
+      <div class="section-heading">
+        <div><span class="section-index">/ LOCAL INVENTORY</span><h2>Security tools</h2></div>
+        <div class="filter"><span>⌕</span><input id="toolSearch" placeholder="Filter tools"></div>
+      </div>
+      <p class="section-explainer">Green means the executable was found on this worker's PATH, not that every command or credential was validated. HexStrike provides adapters; the Kali installer supplies their dependencies. Review its per-package report.</p>
+      <div id="toolMatrix" class="tool-matrix"><div class="skeleton card"></div><div class="skeleton card"></div></div>
+    </section>
+
+    <section class="view" id="activity">
+      <div class="section-heading">
+        <div><span class="section-index">/ PROCESS CONTROL</span><h2>Running jobs</h2></div>
+        <button class="secondary-button" id="activityRefresh">Refresh processes</button>
+      </div>
+      <article class="panel activity-panel">
+        <div class="process-table" role="table">
+          <div class="process-row table-head" role="row"><span>PID</span><span>COMMAND</span><span>STATUS</span><span>RUNTIME</span><span>ACTION</span></div>
+          <div id="processRows"></div>
+        </div>
+      </article>
+    </section>
+
+    <section class="view" id="copilot">
+      <div class="section-heading">
+        <div><span class="section-index">/ LOCAL INTELLIGENCE</span><h2>AI assistant</h2></div>
+        <div class="model-status"><i id="llmDot"></i><span id="llmStatus">Checking Qwen…</span></div>
+      </div>
+      <div class="copilot-grid">
+        <article class="panel copilot-info">
+          <span class="section-index">/ PRIVATE BY DEFAULT</span>
+          <h3>Local-first, API optional</h3>
+          <p id="providerDescription">Qwen analyzes results locally through Ollama. You can switch to a hosted provider when the lab does not have enough hardware.</p>
+          <div class="provider-form">
+            <label>AI provider<select id="llmProvider"><option value="ollama">Local Ollama</option></select></label>
+            <label>Model<input id="llmModel" value="qwen3:1.7b" autocomplete="off"></label>
+            <label id="apiKeyRow" class="hidden">API key<input id="llmApiKey" type="password" autocomplete="off" placeholder="Used for this browser session only"></label>
+            <label id="baseUrlRow" class="hidden">API base URL<input id="llmBaseUrl" type="url" autocomplete="off"></label>
+            <button class="secondary-button" id="testLlm" type="button">Test model connectivity ↗</button><p id="llmTestResult" class="form-note">Configured is not connected. Run a real model test.</p>
+            <p class="provider-note">Keys are never written to disk or returned by the server. Prefer server environment variables for shared lab deployments.</p>
+          </div>
+          <div class="copilot-prompts">
+            <button data-prompt="Explain which reconnaissance steps I should run first for an authorized web assessment.">Plan recon</button>
+            <button data-prompt="Explain the latest assessment results and prioritize the defensive fixes.">Explain findings</button>
+            <button data-prompt="Teach me how the Hanzo architecture and local tools work.">Teach me</button>
+          </div>
+          <label class="check-row attach-result"><input type="checkbox" id="attachAssessment"><span>Attach the latest assessment result to my next message.</span></label>
+        </article>
+        <article class="panel chat-panel">
+          <div id="chatMessages" class="chat-messages" aria-live="polite">
+            <div class="chat-message assistant"><span>HANZO AI</span><p>I’m your private security analyst. Ask me to explain evidence, plan an authorized assessment, or teach you how a tool works.</p></div>
+          </div>
+          <form id="chatForm" class="chat-form">
+            <textarea id="chatInput" rows="3" maxlength="12000" placeholder="Ask the local copilot…" required></textarea>
+            <button class="primary-button" id="chatSend" type="submit">Send <span>→</span></button>
+          </form>
+        </article>
+      </div>
+    </section>
+
+    <section class="view" id="exercises"><div class="section-heading"><div><span class="section-index">DETECTION ENGINEERING</span><h2>Lab exercises</h2><p>Repeatable HELPAG tests. One correlation ID from request to evidence.</p></div><a class="secondary-button" id="companionLink" href="http://10.20.39.11:8080" target="_blank" rel="noreferrer">Open test site ↗</a></div><p class="section-explainer">Runs only against your configured HELPAG companion. You verify indexing and alert firing in your own Splunk lab. This is not a general-purpose scanner.</p><div class="assessment-grid"><form class="panel scan-form" id="exerciseForm"><label for="exerciseTarget">Configured lab target</label><input id="exerciseTarget" readonly value="http://10.20.39.11:8080"><p class="form-note">Set HANZO_LAB_TARGET on the Kali worker to change this address.</p><label for="exerciseSelect">Exercise</label><select id="exerciseSelect"><option value="">Loading catalog…</option></select><div id="exerciseDescription" class="exercise-description"></div><label class="check-row"><input id="exerciseAuthorization" type="checkbox" required><span>I authorize this exercise on my isolated HELPAG lab.</span></label><button id="runExercise" class="primary-button" type="submit">Run lab exercise →</button></form><article class="panel"><div class="panel-head"><h3>Exercise evidence</h3><span id="exerciseStatus" class="pill">AWAITING RUN</span></div><div id="exerciseResult" class="empty-state"><strong>Ready when your lab is</strong><p>Review checks, expected events, and a Splunk search after execution.</p></div></article></div><article class="panel telemetry-settings"><div><h3>Splunk delivery</h3><p id="telemetryDescription">Reading server configuration…</p></div><button class="secondary-button" id="testTelemetry">Send benign HEC probe</button></article></section>
+    <section class="view" id="reports"><div class="section-heading"><div><span class="section-index">PERSISTENT LOCAL EVIDENCE</span><h2>Reports</h2><p>Assessment history and exports. Stored locally in SQLite.</p></div><button class="secondary-button" id="refreshReports">Refresh reports ↻</button></div><div id="reportList" class="report-list"></div><article class="panel hidden" id="reportDetail"><div class="panel-head"><h3>Evidence detail</h3><button class="text-button" id="downloadReport">Download JSON ↓</button></div><pre id="reportDetailJson"></pre></article></section>
+    <footer class="main-footer"><span>HANZO · Powered by HexStrike AI</span><span>Defined scope. Visible execution. Evidence included.</span></footer>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/static/app.js"></script>
+  <script src="/static/optional-mcp.js"></script>
+  <script src="/static/arsenal.js"></script>
+</body>
+</html>

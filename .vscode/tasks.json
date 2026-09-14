@@ -1,0 +1,22 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start VAPT Agent",
+      "type": "shell",
+      "command": "./start_vapt_agent.sh",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Run VAPT Agent tests",
+      "type": "shell",
+      "command": ".venv311/bin/python -m unittest discover -s tests -v",
+      "problemMatcher": []
+    }
+  ]
+}

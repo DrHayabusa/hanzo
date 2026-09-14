@@ -1,0 +1,40 @@
+name: HANZO validation
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HANZO_SKIP_OLLAMA: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-core.txt
+      - name: Install core dependencies
+        run: python -m pip install -r requirements-core.txt
+      - name: Verify dependency compatibility
+        run: python -m pip check
+      - name: Unit and release tests (no live integrations or lab targets)
+        run: python -m unittest discover -s tests -v
+      - name: Shell syntax
+        run: |
+          for script in start_vapt_agent.sh scripts/setup_kali.sh scripts/install_integrations.sh scripts/install_kali_arsenal.sh; do
+            bash -n "$script"
+          done
+      - name: JavaScript syntax
+        run: |
+          node --check static/app.js
+          node --check static/arsenal.js
+          node --check static/optional-mcp.js
+          node --test tests/test_*ui.js

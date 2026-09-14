@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "description": "Reviewed source revisions. Optional sources are not execution integrations.",
+  "repositories": [
+    {
+      "directory": "cve-mcp-server",
+      "url": "https://github.com/mukul975/cve-mcp-server.git",
+      "revision": "d666bac3743574cecc98bcbf524558c2bf0d8e61",
+      "profile": "core"
+    },
+    {
+      "directory": "claude-bughunter",
+      "url": "https://github.com/elementalsouls/Claude-BugHunter.git",
+      "revision": "ef108a26e46c9e3ddb6ee7f6157663badb055f3a",
+      "profile": "core"
+    },
+    {
+      "directory": "strix",
+      "url": "https://github.com/usestrix/strix.git",
+      "revision": "84f4108195fb516d48745aa912ba8862c7360ebb",
+      "profile": "optional"
+    },
+    {
+      "directory": "pentagi",
+      "url": "https://github.com/vxcontrol/pentagi.git",
+      "revision": "ea665308baaff015b226f308438a68d929d0f29b",
+      "profile": "optional"
+    },
+    {
+      "directory": "pentestgpt",
+      "url": "https://github.com/GreyDGL/PentestGPT.git",
+      "revision": "e8b1bb77d1ac00329675cec3b060aba971ec1ac8",
+      "profile": "optional"
+    },
+    {
+      "directory": "cai",
+      "url": "https://github.com/aliasrobotics/CAI.git",
+      "revision": "6dc79257777f5f1c9500b4d2319935d34a47412e",
+      "profile": "optional"
+    },
+    {
+      "directory": "decepticon",
+      "url": "https://github.com/PurpleAILAB/Decepticon.git",
+      "revision": "31e1c8e786c83bb20f5c3d9ebc482cf9fb8ffa06",
+      "profile": "optional"
+    },
+    {
+      "directory": "shannon",
+      "url": "https://github.com/KeygraphHQ/shannon.git",
+      "revision": "25b90b0611f15ab945e051dfee8ae78600d3a002",
+      "profile": "optional"
+    }
+  ]
+}
