@@ -11,7 +11,7 @@
 | Optional MCP stdio fixture | PASS | Real temporary initialize/list/schema/allowlisted echo call |
 | Optional HTTP transports | PASS with mocks | SSE/Streamable HTTP wiring, not actual Burp/Decepticon |
 | Source lock checks | PASS — eight pinned checkouts | Source status, not service deployment |
-| MCP adapter onboarding | PASS — 110 tools listed over stdio | 90 generated adapters + 20 control tools; schemas are real, execution still needs the binary |
+| MCP adapter onboarding | PASS — 113 tools listed over stdio | 90 generated adapters + 23 control tools; schemas are real, execution still needs the binary |
 | MCP authorization gate | PASS | `run_nmap` without `authorization_confirmed` refuses and never calls the worker |
 | MCP readiness gate | PASS | An absent binary refuses with an install instruction instead of a confusing tool error |
 | Wordlist discovery | PASS — 424 real files grouped | Files found on disk; a wordlist is never invented |
@@ -24,9 +24,9 @@ Independent Linux CI passed on GitHub for release commit `9d5ab5c`: Python 3.11 
 - CVE: actual initialize/list discovered **28 tools**; intelligence lookup exercised.
 - BugHunter: CLI self-test, **83 skills / 15 commands**, synthetic URL classification. Classification does not scan the URL.
 - Ollama: model discovery and real **qwen3:1.7b** generation.
-- Central MCP: real initialize/list and catalog call through the running API; the facade exports **110 tools**.
+- Central MCP: real initialize/list and catalog call through the running API; the facade exports **113 tools**.
 - Browser: real dropdown selection and xxd read of **64 bytes of local README**, exit 0, returned output and persisted evidence.
-- MCP stdio: real `initialize`/`list_tools` returning **110 tools**; a real `run_security_tool` xxd call returned exit 0 and actual stdout.
+- MCP stdio: real `initialize`/`list_tools` returning **113 tools**; a real `run_security_tool` xxd call returned exit 0 and actual stdout.
 - Tool adapters against an operator-supplied local sample site (127.0.0.1:5005, Docker): **gobuster** with a SecLists
   wordlist returned exit 0 and real findings (.env 200, admin 403, backups 308); **katana** crawled and returned JSON;
   **httpx** returned 200 with title and Flask/Python fingerprint after the adapter fix below.

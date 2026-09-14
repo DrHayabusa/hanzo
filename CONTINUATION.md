@@ -37,7 +37,7 @@ README.md; docs/PROGRESS.md; PROJECT_PLAN.md; docs/VALIDATION_REPORT.md; docs/CE
 | static/index.html / styles.css / hanzo-emblem.svg | Current visual system |
 | integration_runtime.py | Isolated CVE stdio MCP client and cbh classification |
 | redteam_hub.py | Integration registry, source/service status, plans and client config |
-| redteam_mcp.py | Central MCP facade: 20 control tools + one generated tool per bundled adapter (110 total) |
+| redteam_mcp.py | Central MCP facade: 23 control tools + one generated tool per bundled adapter (113 total) |
 | arsenal_mcp.py | Builds typed MCP tools from the arsenal catalog; authorization and readiness gating |
 | wordlists.py | Discovers wordlists that actually exist; classifies and validates operator paths |
 | optional_mcp.py / optional_mcp_api.py | stdio/SSE/Streamable HTTP bridge, allowlists, limits, redaction, routes |
