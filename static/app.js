@@ -569,7 +569,7 @@ async function loadReports(silent = false) {
     state.reports = [...(results[0].runs || []), ...(results[1].runs || [])].sort((a,b) => String(b.created_at).localeCompare(String(a.created_at)));
     $("#reportCount").textContent = state.reports.length;
     $("#recentRuns").innerHTML = state.reports.slice(0,4).map((run) => '<div class="history-row"><div><strong>' + escapeHtml(reportLabel(run)) + '</strong><small>' + escapeHtml(run.target || run.asset) + '</small></div><div>' + statusBadge(run.status) + '</div><button class="text-button" data-report="' + escapeHtml(run.id) + '" aria-label="Open assessment evidence">View ↗</button></div>').join("") || '<div class="empty-compact">No assessments yet. Your first run will appear here.</div>';
-    $("#reportList").innerHTML = state.reports.map((run) => '<article class="report-card"><div><h3>' + escapeHtml(reportLabel(run)) + '</h3><p>' + escapeHtml(run.target || run.asset) + '</p><small>' + escapeHtml(new Date(run.created_at).toLocaleString()) + ' · ' + escapeHtml(run.id) + '</small></div>' + statusBadge(run.status) + '<button class="secondary-button" data-report="' + escapeHtml(run.id) + '">View evidence →</button>' + (run.exercise_id ? '<a class="text-button" href="/api/lab/exercises/' + encodeURIComponent(run.id) + '/report?format=md">Markdown ↓</a>' : '') + '</article>').join("") || '<article class="panel empty-state"><strong>Your evidence starts here.</strong><p>Run an assessment or lab exercise to create the first report. No sample results are presented as live data.</p></article>';
+    $("#reportList").innerHTML = state.reports.map((run) => '<article class="report-card"><div><h3>' + escapeHtml(reportLabel(run)) + '</h3><p>' + escapeHtml(run.target || run.asset) + '</p><small>' + escapeHtml(new Date(run.created_at).toLocaleString()) + ' · ' + escapeHtml(run.id) + '</small></div>' + statusBadge(run.status) + '<button class="secondary-button" data-report="' + escapeHtml(run.id) + '">View evidence →</button>' + (run.exercise_id ? '<a class="text-button" href="/api/lab/exercises/' + encodeURIComponent(run.id) + '/report?format=md">Markdown ↓</a>' : '<button class="text-button" data-delete-report="' + escapeHtml(run.id) + '">Delete ✕</button>') + '</article>').join("") || '<article class="panel empty-state"><strong>Your evidence starts here.</strong><p>Run an assessment or lab exercise to create the first report. No sample results are presented as live data.</p></article>';
   } catch (error) {
     $("#recentRuns").innerHTML = '<div class="empty-compact">History unavailable. Check the agent connection.</div>';
     $("#reportList").textContent = "Could not load history: " + error.message;
@@ -651,7 +651,38 @@ if (typeof document !== "undefined") {
 $("#quickForm").addEventListener("submit", (event) => { event.preventDefault(); $("#target").value = $("#quickTarget").value.trim(); updateWorkflowAuthorization(); showView("assessment"); $("#target").focus(); });
 $(".brand").addEventListener("click", (event) => { event.preventDefault(); showView("overview"); });
 $("#refreshReports").addEventListener("click", () => loadReports());
+$("#reportPurge").addEventListener("click", () => purgeReports());
 document.addEventListener("click", (event) => { const button = event.target.closest("[data-report]"); if (button) openReport(button.dataset.report); });
+document.addEventListener("click", (event) => { const button = event.target.closest("[data-delete-report]"); if (button) deleteReport(button.dataset.deleteReport, button); });
+async function deleteReport(id, button) {
+  const run = state.reports.find((item) => item.id === id);
+  const label = run ? reportLabel(run) + " · " + (run.target || run.asset || id) : id;
+  if (!window.confirm("Permanently delete this report?\n\n" + label + "\n\nThis cannot be undone.")) return;
+  if (button) button.disabled = true;
+  try {
+    await api("/api/redteam/workflows/" + encodeURIComponent(id), { method: "DELETE" });
+    if (state.selectedReport && state.selectedReport.id === id) { state.selectedReport = null; $("#reportDetail").classList.add("hidden"); }
+    showToast("Report deleted.");
+    await loadReports(true);
+  } catch (error) { showToast(error.message, true); if (button) button.disabled = false; }
+}
+async function purgeReports() {
+  const keepField = $("#reportKeepLatest");
+  const keep = Math.max(0, Number(keepField && keepField.value) || 0);
+  const deletable = state.reports.filter((run) => !run.exercise_id).length;
+  if (!deletable) { showToast("There are no stored reports to delete.", true); return; }
+  const removing = Math.max(0, deletable - keep);
+  if (!removing) { showToast("Nothing to delete: the retention count covers every stored report."); return; }
+  if (!window.confirm("Permanently delete " + removing + " of " + deletable + " stored report(s), keeping the newest " + keep + "?\n\nThis cannot be undone.")) return;
+  const button = $("#reportPurge");
+  if (button) button.disabled = true;
+  try {
+    const result = await api("/api/redteam/workflows/purge", { method: "POST", body: JSON.stringify({ keep_latest: keep }) });
+    showToast(result.message || "Reports deleted.");
+    await loadReports(true);
+  } catch (error) { showToast(error.message, true); }
+  finally { if (button) button.disabled = false; }
+}
 $("#downloadReport").addEventListener("click", () => { if (state.selectedReport) downloadJson(state.selectedReport, "hanzo-" + state.selectedReport.id + ".json"); });
 $("#exerciseSelect").addEventListener("change", describeExercise);
 $("#exerciseForm").addEventListener("submit", (event) => { event.preventDefault(); runLabExercise(); });

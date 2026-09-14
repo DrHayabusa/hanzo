@@ -7,7 +7,7 @@ import os
 import sqlite3
 import uuid
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -114,6 +114,71 @@ class HanzoStore:
                 item.pop("result_json", None)
             results.append(item)
         return results
+
+    def delete(self, run_id: str) -> bool:
+        """Delete one stored workflow run. Returns False when the id was unknown."""
+        identifier = str(run_id or "").strip()
+        if not identifier:
+            return False
+        with self._connect() as connection:
+            deleted = connection.execute(
+                "DELETE FROM workflow_runs WHERE id = ?", (identifier,)
+            ).rowcount
+        return bool(deleted)
+
+    def delete_many(self, run_ids: List[str]) -> int:
+        """Delete the given workflow runs and return how many rows were removed."""
+        identifiers = [str(item).strip() for item in run_ids or [] if str(item).strip()]
+        if not identifiers:
+            return 0
+        placeholders = ",".join("?" for _ in identifiers)
+        with self._connect() as connection:
+            return connection.execute(
+                f"DELETE FROM workflow_runs WHERE id IN ({placeholders})", identifiers
+            ).rowcount
+
+    def purge(self, keep_latest: int = 0, older_than_days: int | None = None) -> Dict[str, Any]:
+        """Remove old evidence. Deletion is explicit and reports exactly what it removed.
+
+        keep_latest retains the newest N runs; older_than_days removes runs older than
+        that age. With neither set, nothing is deleted.
+        """
+        conditions, parameters = [], []
+        if older_than_days is not None:
+            if int(older_than_days) < 0:
+                raise ValueError("older_than_days cannot be negative")
+            cutoff = datetime.now(timezone.utc) - timedelta(days=int(older_than_days))
+            conditions.append("created_at < ?")
+            parameters.append(cutoff.isoformat())
+        if keep_latest:
+            if int(keep_latest) < 0:
+                raise ValueError("keep_latest cannot be negative")
+            conditions.append(
+                "id NOT IN (SELECT id FROM workflow_runs ORDER BY created_at DESC LIMIT ?)"
+            )
+            parameters.append(int(keep_latest))
+        if not conditions:
+            return {"deleted": 0, "remaining": self.count(),
+                    "message": "Nothing deleted: choose runs to delete, a retention count, or an age."}
+        with self._connect() as connection:
+            deleted = connection.execute(
+                f"DELETE FROM workflow_runs WHERE {' AND '.join(conditions)}", parameters
+            ).rowcount
+        remaining = self.count()
+        return {"deleted": int(deleted), "remaining": remaining,
+                "message": f"Deleted {int(deleted)} stored run(s); {remaining} remain."}
+
+    def count(self) -> int:
+        with self._connect() as connection:
+            return int(connection.execute("SELECT COUNT(*) AS total FROM workflow_runs").fetchone()["total"])
+
+    def vacuum(self) -> None:
+        """Reclaim file space after deletions."""
+        connection = sqlite3.connect(self.path, timeout=15)
+        try:
+            connection.execute("VACUUM")
+        finally:
+            connection.close()
 
     def record_exercise(self, result: Dict[str, Any]) -> None:
         with self._connect() as connection:

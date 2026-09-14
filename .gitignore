@@ -8,6 +8,7 @@ __pycache__/
 models/
 tools/ollama/
 tools/bin/
+wordlists/
 .integrations/
 .hanzo-data/
 .env

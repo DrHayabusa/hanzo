@@ -4,6 +4,11 @@ Updated 2026-09-15 (Asia/Dubai).
 ## Implemented
 - Nine-page local workspace; responsive black/gold/red theme and flat ninja emblem.
 - All **90 bundled HexStrike tool POST routes / 10 categories** in a GUI command launcher: category → command → typed arguments → exact request → confirmation → output and SQLite/download evidence.
+- **Every one of the 90 bundled adapters is also an individual MCP tool** (`run_<command_id>`) with a real typed
+  JSON schema, generated from the same catalog the browser uses. The facade exports 110 tools in total.
+- **Wordlist selection**: discovery of wordlists that actually exist, a dropdown in every wordlist field,
+  a custom path option, and truthful substitution when an adapter default is absent.
+- **Report deletion**: per-report delete and a retention purge, each explicitly confirmed.
 - Core CVE MCP and BugHunter CLI bridges, eight locked source integrations.
 - Optional stdio/SSE/Streamable HTTP MCP discovery, schemas, exact allowlists and explicit invocation.
 - Ollama/cloud UI and API; real test button rather than configuration-only “online.”
@@ -13,7 +18,7 @@ Updated 2026-09-15 (Asia/Dubai).
 - Claude handoff, prioritized plan and operator documentation.
 
 ## Measured
-**95 Python tests / 27 JavaScript tests passed.** Dependency and syntax checks passed. Tests include a real harmless stdio MCP fixture handshake and echo call.
+**129 Python tests / 27 JavaScript tests passed.** Dependency and syntax checks passed. Tests include a real harmless stdio MCP fixture handshake and echo call.
 
 The browser command launcher executed xxd on 64 bytes of this repository's README, returned exit 0 and saved evidence. Core CVE protocol discovery returned 28 tools; BugHunter CLI reported 83 skills/15 commands; local qwen3:1.7b inference passed. Detailed boundaries: VALIDATION_REPORT.md.
 

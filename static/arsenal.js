@@ -7,6 +7,13 @@
   const fieldType = (field) => String(field.type || "str").toLowerCase();
   const isBoolean = (field) => ["bool", "boolean"].includes(fieldType(field));
   const isJson = (field) => ["object", "array", "json", "dict", "list"].includes(fieldType(field));
+  /* Fields that name a file of terms: offer the lists this worker really has. */
+  const isWordlist = (field) => !isBoolean(field) && !isJson(field) && /wordlist|word_list|userlist|passlist/i.test(String(field.name || ""));
+  const WORDLIST_OPTION_LIMIT = 500;
+  const baseName = (value) => String(value || "").split("/").pop().toLowerCase();
+  const readable = (bytes) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+  const readinessMark = (command) => (command.installed === false ? " · not installed"
+    : command.installed === true ? " · ready" : " · runtime check");
 
   function fieldValue(field, input) {
     if (isBoolean(field)) return Boolean(input.checked);
@@ -63,6 +70,19 @@
     constructor(doc, fetcher) {
       this.doc = doc; this.fetcher = fetcher; this.categories = []; this.fields = []; this.inputs = [];
       this.command = null; this.busy = false; this.lastResult = null; this.nodes = {};
+      this.wordlists = []; this.wordlistCatalog = null;
+    }
+    /* Wordlists are ranked so the closest match to the adapter default comes first. */
+    wordlistChoices(field) {
+      const wanted = baseName(field.default);
+      const groups = { wordlist: "web", userlist: "usernames", passlist: "passwords" };
+      const key = Object.keys(groups).find((name) => String(field.name || "").toLowerCase().includes(name));
+      const preferred = key ? groups[key] : "web";
+      const score = (item) => (baseName(item.path) === wanted ? 0 : item.group === preferred ? 1 : 2);
+      return this.wordlists.slice().sort((a, b) => score(a) - score(b) || a.path.localeCompare(b.path)).slice(0, WORDLIST_OPTION_LIMIT);
+    }
+    knownWordlist(value) {
+      return Boolean(value) && this.wordlists.some((item) => item.path === value);
     }
     element(tag, text, id, className) {
       const element = this.doc.createElement(tag);
@@ -117,9 +137,11 @@
       try {
         const catalog = await request(this.fetcher, "/api/arsenal/catalog");
         this.categories = (catalog.categories || []).filter((category) => Array.isArray(category.commands));
+        await this.loadWordlists();
         this.nodes.arsenalCategory.replaceChildren();
         this.categories.forEach((category) => {
-          const option = this.element("option", `${category.label || category.id} (${category.commands.length})`); option.value = category.id; this.nodes.arsenalCategory.append(option);
+          const ready = category.commands.filter((command) => command.installed !== false).length;
+          const option = this.element("option", `${category.label || category.id} (${ready}/${category.commands.length} ready)`); option.value = category.id; this.nodes.arsenalCategory.append(option);
         });
         if (this.categories.length) this.nodes.arsenalCategory.value = this.categories[0].id;
         this.selectCategory();
@@ -127,13 +149,24 @@
         this.command = null; this.nodes.arsenalDescription.textContent = `Catalog unavailable: ${error.message}`; this.nodes.arsenalStatus.textContent = "No command executed. Refresh the catalog after restoring the worker.";
       } finally { this.nodes.arsenalRefresh.disabled = false; }
     }
+    /* A missing wordlist catalog must never block the launcher; the field stays free text. */
+    async loadWordlists() {
+      try {
+        const catalog = await request(this.fetcher, "/api/arsenal/wordlists");
+        this.wordlistCatalog = catalog;
+        this.wordlists = (catalog.groups || []).flatMap((group) => (group.wordlists || [])
+          .map((item) => ({ ...item, group: group.id, groupLabel: group.label })));
+      } catch { this.wordlistCatalog = null; this.wordlists = []; }
+    }
     selectCategory() {
       const category = this.categories.find((item) => item.id === this.nodes.arsenalCategory.value);
       this.nodes.arsenalCommand.replaceChildren();
       (category?.commands || []).forEach((command) => {
-        const option = this.element("option", `${command.label || command.id}${command.installed === false ? " · not installed" : ""}`); option.value = command.id; this.nodes.arsenalCommand.append(option);
+        const option = this.element("option", `${command.label || command.id}${readinessMark(command)}`); option.value = command.id; this.nodes.arsenalCommand.append(option);
       });
-      if (category?.commands.length) this.nodes.arsenalCommand.value = category.commands[0].id;
+      const runnable = (category?.commands || []).find((command) => command.installed !== false);
+      if (runnable) this.nodes.arsenalCommand.value = runnable.id;
+      else if (category?.commands.length) this.nodes.arsenalCommand.value = category.commands[0].id;
       this.selectCommand();
     }
     selectCommand() {
@@ -154,10 +187,46 @@
         }
         const label = this.label(`${field.name}${field.required ? " (required)" : ""} · ${field.type || "text"}`, input);
         if (isBoolean(field)) label.className = "check-row";
+        if (isWordlist(field)) this.attachWordlists(field, input, label, index);
         input.addEventListener("input", () => this.updatePreview()); input.addEventListener("change", () => this.updatePreview());
         this.inputs.push(input); this.nodes.arsenalFields.append(label);
       });
       this.updatePreview();
+    }
+    /* Offer the lists that exist, keep any custom path typable, and never leave a
+       default pointing at a file this worker does not have. */
+    attachWordlists(field, input, label, index) {
+      const note = this.element("p", "", undefined, "form-note");
+      if (!this.wordlists.length) {
+        note.textContent = this.wordlistCatalog
+          ? "No wordlist found on this worker. Install one (bash scripts/install_wordlists.sh) or type an absolute path; the adapter default may not exist here."
+          : "Wordlist catalog unavailable. Type an absolute path to a wordlist on the worker.";
+        label.append(note);
+        return;
+      }
+      const listId = `arsenalWordlistOptions${index}`;
+      const datalist = this.element("datalist");
+      datalist.id = listId;
+      this.wordlistChoices(field).forEach((item) => {
+        const option = this.element("option");
+        option.value = item.path;
+        option.label = `${item.name} · ${item.groupLabel} · ${readable(item.bytes)}`;
+        datalist.append(option);
+      });
+      if (input.setAttribute) input.setAttribute("list", listId);
+      const original = input.value;
+      if (!this.knownWordlist(original)) {
+        const replacement = this.wordlistChoices(field)[0];
+        if (replacement) {
+          input.value = replacement.path;
+          note.textContent = original
+            ? `The adapter default ${original} is not present on this worker. HANZO selected ${replacement.name}; pick another from the list or type any path.`
+            : `Choose one of ${this.wordlists.length} discovered wordlists, or type any path on the worker.`;
+        }
+      } else {
+        note.textContent = `Selected from ${this.wordlists.length} discovered wordlists. You can also type any path on the worker.`;
+      }
+      label.append(datalist, note);
     }
     updatePreview() {
       this.nodes.arsenalAuthorization.checked = false;

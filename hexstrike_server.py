@@ -71,6 +71,7 @@ from lab_exercises import create_lab_blueprint
 from optional_mcp_api import create_optional_mcp_blueprint
 from arsenal_catalog import build_catalog
 from scan_scope import validate_scan_target
+import wordlists as wordlist_catalog
 
 # ============================================================================
 # LOGGING CONFIGURATION (MUST BE FIRST)
@@ -158,6 +159,20 @@ app.register_blueprint(create_optional_mcp_blueprint(PROJECT_DIR, hanzo_store))
 @app.get("/api/arsenal/catalog")
 def arsenal_catalog():
     return jsonify(build_catalog(PROJECT_DIR))
+
+
+@app.get("/api/arsenal/wordlists")
+def arsenal_wordlists():
+    """List wordlists that actually exist on this worker. Never invents a path."""
+    fresh = request.args.get("refresh", "").lower() in {"1", "true", "yes"}
+    return jsonify(wordlist_catalog.discover(PROJECT_DIR, use_cache=not fresh))
+
+
+@app.post("/api/arsenal/wordlists/resolve")
+def arsenal_wordlist_resolve():
+    """Validate an operator-supplied custom wordlist path before a tool runs."""
+    payload = request.get_json(silent=True) or {}
+    return jsonify(wordlist_catalog.resolve(payload.get("path", ""), PROJECT_DIR))
 
 # ============================================================================
 # MODERN VISUAL ENGINE (v2.0 ENHANCEMENT)
@@ -9254,6 +9269,35 @@ def hanzo_workflows():
     return jsonify({"success": True, "run_id": run_id}), 201
 
 
+@app.route("/api/redteam/workflows/<run_id>", methods=["DELETE"])
+def hanzo_workflow_delete(run_id):
+    """Delete one stored report. Deletion is permanent and is never implicit."""
+    if not hanzo_store.delete(run_id):
+        return jsonify({"success": False, "error": "No stored report has that id."}), 404
+    return jsonify({"success": True, "deleted": 1, "remaining": hanzo_store.count()})
+
+
+@app.route("/api/redteam/workflows/purge", methods=["POST"])
+def hanzo_workflow_purge():
+    """Delete selected reports, or prune by retention count or age."""
+    payload = request.get_json(silent=True) or {}
+    run_ids = payload.get("run_ids")
+    try:
+        if isinstance(run_ids, list) and run_ids:
+            deleted = hanzo_store.delete_many(run_ids)
+            outcome = {"deleted": deleted, "remaining": hanzo_store.count(),
+                       "message": f"Deleted {deleted} selected report(s)."}
+        else:
+            keep = payload.get("keep_latest", 0)
+            older = payload.get("older_than_days")
+            outcome = hanzo_store.purge(int(keep or 0), None if older in (None, "") else int(older))
+    except (TypeError, ValueError) as error:
+        return jsonify({"success": False, "error": str(error)}), 400
+    if outcome["deleted"]:
+        hanzo_store.vacuum()
+    return jsonify({"success": True, **outcome})
+
+
 @app.route("/api/llm/providers", methods=["GET"])
 def llm_providers():
     """List safe provider metadata without exposing configured API keys."""
@@ -13530,7 +13574,10 @@ def httpx():
             logger.warning("🌐 httpx called without target parameter")
             return jsonify({"error": "Target parameter is required"}), 400
 
-        command = f"httpx -l {target} -t {threads}"
+        # -l reads a FILE of targets; a single host or URL must use -u or httpx
+        # fails trying to open the URL as a file.
+        target_flag = "-l" if os.path.isfile(target) else "-u"
+        command = f"httpx {target_flag} {target} -t {threads}"
 
         if probe:
             command += " -probe"

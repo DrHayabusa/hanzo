@@ -37,7 +37,9 @@ README.md; docs/PROGRESS.md; PROJECT_PLAN.md; docs/VALIDATION_REPORT.md; docs/CE
 | static/index.html / styles.css / hanzo-emblem.svg | Current visual system |
 | integration_runtime.py | Isolated CVE stdio MCP client and cbh classification |
 | redteam_hub.py | Integration registry, source/service status, plans and client config |
-| redteam_mcp.py | Central MCP facade (16 tools); original broader adapter remains hexstrike_mcp.py |
+| redteam_mcp.py | Central MCP facade: 20 control tools + one generated tool per bundled adapter (110 total) |
+| arsenal_mcp.py | Builds typed MCP tools from the arsenal catalog; authorization and readiness gating |
+| wordlists.py | Discovers wordlists that actually exist; classifies and validates operator paths |
 | optional_mcp.py / optional_mcp_api.py | stdio/SSE/Streamable HTTP bridge, allowlists, limits, redaction, routes |
 | hanzo_store.py | SQLite workflow/exercise evidence and credential-field redaction |
 | scan_scope.py | Conservative single-target validation for automated smart scan |
@@ -49,7 +51,7 @@ README.md; docs/PROGRESS.md; PROJECT_PLAN.md; docs/VALIDATION_REPORT.md; docs/CE
 | .github/workflows/tests.yml | Linux/Python 3.11 unit, dependency, shell and JS validation |
 
 ## Measured integration state
-- HexStrike: embedded and all **90 tool POST routes in 10 categories** exposed in GUI. Inventory contains 124 unique names; only 12 binaries detected on development Mac. Installing Kali packages remains destination work.
+- HexStrike: embedded and all **90 tool POST routes in 10 categories** exposed in the GUI **and as individual MCP tools**. Inventory contains 124 unique names; only 12 binaries detected on development Mac. Installing Kali packages remains destination work.
 - CVE MCP: real initialize/list (28 tools) and intelligence calls passed. Dedicated bridge uses a restricted intelligence tool allowlist.
 - BugHunter: real CLI self-test, 83 skills/15 commands and classification passed. No-match is a valid completed outcome. It is not a daemon.
 - Ollama: qwen3:1.7b discovery and real generation passed.
