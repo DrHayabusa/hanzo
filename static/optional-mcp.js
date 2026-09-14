@@ -72,7 +72,7 @@
     try {
       const result = await api(`/api/mcp/optional/${encodeURIComponent(current().id)}/call`, {method:"POST", body:JSON.stringify({tool:el("optionalTool").value, arguments:args, authorization_confirmed:true})});
       output(result); showToast(result.success ? "MCP tool returned — review evidence" : "MCP tool reported failure");
-    } catch (error) { output({error:error.message, result:error.result || error.payload}); }
+    } catch (error) { output({error:error.message, result:error.data || error.result || error.payload}); }
     finally { busy = false; detail(); }
   });
   refresh();
