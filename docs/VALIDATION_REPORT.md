@@ -3,7 +3,7 @@
 
 | Check actually run | Result | Boundary |
 | --- | --- | --- |
-| Python unittest discovery | PASS — 129 tests | API, evidence, synthetic lab transport, installers, MCP, scope |
+| Python unittest discovery | PASS — 148 tests | API, evidence, synthetic lab transport, installers, MCP, scope |
 | Node UI regressions | PASS — 27 tests | Workflows, provider states, command fields/dropdowns/confirmation/errors |
 | pip check | PASS | Existing Python 3.11 core environment |
 | JS/shell syntax | PASS | Three UI scripts and startup/bootstrap/installers |
@@ -11,10 +11,13 @@
 | Optional MCP stdio fixture | PASS | Real temporary initialize/list/schema/allowlisted echo call |
 | Optional HTTP transports | PASS with mocks | SSE/Streamable HTTP wiring, not actual Burp/Decepticon |
 | Source lock checks | PASS — eight pinned checkouts | Source status, not service deployment |
+| Target pre-flight | PASS — 14 tests | One TCP connect plus an HTTP HEAD; never a scan |
+| Path quoting regression | PASS — 5 tests | Guards the shell=True command strings against paths with spaces |
+| macOS arsenal install | PASS — 18 tools verified on PATH | Prebuilt binaries preferred; source builds are opt-in |
 | MCP adapter onboarding | PASS — 113 tools listed over stdio | 90 generated adapters + 23 control tools; schemas are real, execution still needs the binary |
 | MCP authorization gate | PASS | `run_nmap` without `authorization_confirmed` refuses and never calls the worker |
 | MCP readiness gate | PASS | An absent binary refuses with an install instruction instead of a confusing tool error |
-| Wordlist discovery | PASS — 424 real files grouped | Files found on disk; a wordlist is never invented |
+| Wordlist discovery | PASS — 429 real files grouped | Files found on disk; a wordlist is never invented |
 
 Additional regression coverage: missing/changed config, exact allowlists, confirmation, pagination, timeouts, secret redaction and size limits; HTTP bridge persistence/error handling; automated scan target injection/max_tools guards; clear failure if no suitable executable. This is not a complete audit of all legacy routes.
 
@@ -52,10 +55,43 @@ node --test tests/test_*ui.js
 .venv311/bin/python scripts/validate_gateway.py
 ```
 
+## Session of 2026-09-15: migration and arsenal
+
+The project now runs from an external volume at `/Volumes/shuaibs/Shahid project/hanzo`
+because the boot disk was full. The venv, Ollama models, pinned integration sources,
+wordlists and `tools/bin` all live there; only Homebrew formulas remain on the boot
+volume, since Homebrew always installs into `/opt/homebrew`.
+
+Measured after the move:
+- 148 Python tests and 27 JavaScript tests pass from the new location.
+- **30 of 90 adapters ready, 29 executables present** (11 at the start of the session).
+- Real runs against an authorized local sample site (127.0.0.1:5005, Flask in Docker):
+  `httpx` returned 200 with title and `Flask:3.1.8,Python:3.11.16`; `gobuster` with a
+  SecLists wordlist returned **14 findings**, including an exposed `.env` (200),
+  `admin` (403) and `backups` (308). `katana` and `feroxbuster` also returned real output.
+- Local `qwen3:1.7b` inference, CVE MCP, and the BugHunter CLI (83 skills) all work
+  from the new location.
+
+Fixed this session:
+- `/api/tools/httpx` built `httpx -l <target>`; `-l` reads a FILE of targets, so every
+  single-URL probe failed. It now picks `-u` for a host or URL and `-l` only for a file.
+- `hexstrike_mcp.py` defined `httpx_probe` twice; the second silently shadowed the first
+  and sent parameters the server never reads.
+- Adapters interpolated filesystem paths into `shell=True` command strings unquoted, so
+  any path containing a space split into separate arguments. 41 command-building lines
+  now shell-quote path parameters. This surfaced immediately because the project
+  directory itself contains a space.
+- The macOS installer linked every console script from its tools venv into `tools/bin`,
+  which replaced the real ProjectDiscovery `httpx` binary with the Python httpx library's
+  CLI. It now links only the scripts a package declares and never overwrites a real binary.
+
 ## Known environment limits observed here
-The development Mac ran out of disk during the SecLists clone; the checkout was trimmed to 424 usable lists and
-`wordlists/` is gitignored. The sample site is a single-threaded container: a 10-thread gobuster run plus a
-concurrent sqlmap saturated it and it stopped responding. That is a property of the target, not of HANZO.
+The boot disk filled twice during this session. Homebrew on macOS 13 is a Tier 3 configuration and compiles
+many formulas from source, which is slow and exhausts a full disk; the installer therefore prefers prebuilt
+release binaries into `tools/bin` and keeps its download and build caches on the project volume, and it stops
+before the boot volume drops below 1.2 GB. The sample site is a single-threaded container: a 10-thread gobuster
+run plus a concurrent sqlmap saturated it and Docker itself stopped responding while the disk was full. That is
+a property of the target and the host, not of HANZO.
 
 ## Not certified
 Fresh actual Kali installation; all 90 real tool operations; all external frameworks; live Burp/Decepticon; cloud inference without credentials; IIS/Splunk forwarding/indexing/detection; production auth/isolation; exhaustive dependency security or load testing; zero defects.

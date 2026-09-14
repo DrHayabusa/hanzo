@@ -9,6 +9,8 @@ models/
 tools/ollama/
 tools/bin/
 wordlists/
+.cache/
+tools/pyenv/
 .integrations/
 .hanzo-data/
 .env

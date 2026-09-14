@@ -35,6 +35,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from collections import OrderedDict
+import shlex
 import shutil
 import venv
 import zipfile
@@ -72,6 +73,7 @@ from optional_mcp_api import create_optional_mcp_blueprint
 from arsenal_catalog import build_catalog
 from scan_scope import validate_scan_target
 import wordlists as wordlist_catalog
+import assessment_preflight
 
 # ============================================================================
 # LOGGING CONFIGURATION (MUST BE FIRST)
@@ -99,6 +101,11 @@ except PermissionError:
 logger = logging.getLogger(__name__)
 
 # Flask app configuration
+
+def _q(value):
+    """Shell-quote a filesystem path for the shell=True command strings below."""
+    return shlex.quote(str(value))
+
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024
@@ -166,6 +173,17 @@ def arsenal_wordlists():
     """List wordlists that actually exist on this worker. Never invents a path."""
     fresh = request.args.get("refresh", "").lower() in {"1", "true", "yes"}
     return jsonify(wordlist_catalog.discover(PROJECT_DIR, use_cache=not fresh))
+
+
+@app.post("/api/assessment/preflight")
+def assessment_preflight_route():
+    """Validate, reach and report stage readiness before any scanner is launched."""
+    payload = request.get_json(silent=True) or {}
+    target = str(payload.get("target", "")).strip()
+    if not target:
+        return jsonify({"error": "A target is required"}), 400
+    stage = str(payload.get("stage", "profile")).strip().lower()
+    return jsonify(assessment_preflight.preflight(target, stage, build_catalog(PROJECT_DIR)))
 
 
 @app.post("/api/arsenal/wordlists/resolve")
@@ -10821,7 +10839,7 @@ def gobuster():
                 "error": f"Invalid mode: {mode}. Must be one of: dir, dns, fuzz, vhost"
             }), 400
 
-        command = f"gobuster {mode} -u {url} -w {wordlist}"
+        command = f"gobuster {mode} -u {url} -w {_q(wordlist)}"
 
         if additional_args:
             command += f" {additional_args}"
@@ -10980,7 +10998,7 @@ def trivy():
             command += f" --severity {severity}"
 
         if output_file:
-            command += f" --output {output_file}"
+            command += f" --output {_q(output_file)}"
 
         if additional_args:
             command += f" {additional_args}"
@@ -11225,7 +11243,7 @@ def docker_bench_security():
             command += f" -e {exclude}"
 
         if output_file:
-            command += f" -l {output_file}"
+            command += f" -l {_q(output_file)}"
 
         if additional_args:
             command += f" {additional_args}"
@@ -11287,7 +11305,7 @@ def falco():
         command = f"timeout {duration} falco"
 
         if config_file:
-            command += f" --config {config_file}"
+            command += f" --config {_q(config_file)}"
 
         if rules_file:
             command += f" --rules {rules_file}"
@@ -11392,7 +11410,7 @@ def dirb():
                 "error": "URL parameter is required"
             }), 400
 
-        command = f"dirb {url} {wordlist}"
+        command = f"dirb {url} {_q(wordlist)}"
 
         if additional_args:
             command += f" {additional_args}"
@@ -11587,7 +11605,7 @@ def john():
             command += f" --format={format_type}"
 
         if wordlist:
-            command += f" --wordlist={wordlist}"
+            command += f" --wordlist={_q(wordlist)}"
 
         if additional_args:
             command += f" {additional_args}"
@@ -11679,13 +11697,13 @@ def ffuf():
         command = f"ffuf"
 
         if mode == "directory":
-            command += f" -u {url}/FUZZ -w {wordlist}"
+            command += f" -u {url}/FUZZ -w {_q(wordlist)}"
         elif mode == "vhost":
-            command += f" -u {url} -H 'Host: FUZZ' -w {wordlist}"
+            command += f" -u {url} -H 'Host: FUZZ' -w {_q(wordlist)}"
         elif mode == "parameter":
-            command += f" -u {url}?FUZZ=value -w {wordlist}"
+            command += f" -u {url}?FUZZ=value -w {_q(wordlist)}"
         else:
-            command += f" -u {url} -w {wordlist}"
+            command += f" -u {url} -w {_q(wordlist)}"
 
         command += f" -mc {match_codes}"
 
@@ -11810,7 +11828,7 @@ def hashcat():
         command = f"hashcat -m {hash_type} -a {attack_mode} {hash_file}"
 
         if attack_mode == "0" and wordlist:
-            command += f" {wordlist}"
+            command += f" {_q(wordlist)}"
         elif attack_mode == "3" and mask:
             command += f" {mask}"
 
@@ -12355,7 +12373,7 @@ def msfvenom():
             command += f" -f {format_type}"
 
         if output_file:
-            command += f" -o {output_file}"
+            command += f" -o {_q(output_file)}"
 
         if encoder:
             command += f" -e {encoder}"
@@ -12396,7 +12414,7 @@ def gdb():
                 "error": "Binary parameter is required"
             }), 400
 
-        command = f"gdb {binary}"
+        command = f"gdb {_q(binary)}"
 
         if script_file:
             command += f" -x {script_file}"
@@ -12405,7 +12423,7 @@ def gdb():
             temp_script = "/tmp/gdb_commands.txt"
             with open(temp_script, "w") as f:
                 f.write(commands)
-            command += f" -x {temp_script}"
+            command += f" -x {_q(temp_script)}"
 
         if additional_args:
             command += f" {additional_args}"
@@ -12448,9 +12466,9 @@ def radare2():
             temp_script = "/tmp/r2_commands.txt"
             with open(temp_script, "w") as f:
                 f.write(commands)
-            command = f"r2 -i {temp_script} -q {binary}"
+            command = f"r2 -i {_q(temp_script)} -q {_q(binary)}"
         else:
-            command = f"r2 -q {binary}"
+            command = f"r2 -q {_q(binary)}"
 
         if additional_args:
             command += f" {additional_args}"
@@ -12495,7 +12513,7 @@ def binwalk():
         if additional_args:
             command += f" {additional_args}"
 
-        command += f" {file_path}"
+        command += f" {_q(file_path)}"
 
         logger.info(f"🔧 Starting Binwalk analysis: {file_path}")
         result = execute_command(command)
@@ -12522,7 +12540,7 @@ def ropgadget():
                 "error": "Binary parameter is required"
             }), 400
 
-        command = f"ROPgadget --binary {binary}"
+        command = f"ROPgadget --binary {_q(binary)}"
 
         if gadget_type:
             command += f" --only '{gadget_type}'"
@@ -12553,7 +12571,7 @@ def checksec():
                 "error": "Binary parameter is required"
             }), 400
 
-        command = f"checksec --file={binary}"
+        command = f"checksec --file={_q(binary)}"
 
         logger.info(f"🔧 Starting Checksec analysis: {binary}")
         result = execute_command(command)
@@ -12589,7 +12607,7 @@ def xxd():
         if additional_args:
             command += f" {additional_args}"
 
-        command += f" {file_path}"
+        command += f" {_q(file_path)}"
 
         logger.info(f"🔧 Starting XXD hex dump: {file_path}")
         result = execute_command(command)
@@ -12621,7 +12639,7 @@ def strings():
         if additional_args:
             command += f" {additional_args}"
 
-        command += f" {file_path}"
+        command += f" {_q(file_path)}"
 
         logger.info(f"🔧 Starting Strings extraction: {file_path}")
         result = execute_command(command)
@@ -12658,7 +12676,7 @@ def objdump():
         if additional_args:
             command += f" {additional_args}"
 
-        command += f" {binary}"
+        command += f" {_q(binary)}"
 
         logger.info(f"🔧 Starting Objdump analysis: {binary}")
         result = execute_command(command)
@@ -12695,7 +12713,7 @@ def ghidra():
         os.makedirs(project_dir, exist_ok=True)
 
         # Base Ghidra command for headless analysis
-        command = f"analyzeHeadless {project_dir} {project_name} -import {binary} -deleteProject"
+        command = f"analyzeHeadless {project_dir} {project_name} -import {_q(binary)} -deleteProject"
 
         if script_file:
             command += f" -postScript {script_file}"
@@ -12875,7 +12893,7 @@ def gdb_peda():
         command = "gdb -q"
 
         if binary:
-            command += f" {binary}"
+            command += f" {_q(binary)}"
 
         if core_file:
             command += f" {core_file}"
@@ -12893,7 +12911,7 @@ quit
 """
             with open(temp_script, "w") as f:
                 f.write(peda_commands)
-            command += f" -x {temp_script}"
+            command += f" -x {_q(temp_script)}"
         else:
             # Default PEDA initialization
             command += " -ex 'source ~/peda/peda.py' -ex 'quit'"
@@ -13025,7 +13043,7 @@ def ropper():
             logger.warning("🔧 ropper called without binary parameter")
             return jsonify({"error": "Binary parameter is required"}), 400
 
-        command = f"ropper --file {binary}"
+        command = f"ropper --file {_q(binary)}"
 
         if gadget_type == "rop":
             command += " --rop"
@@ -13071,7 +13089,7 @@ def pwninit():
             logger.warning("🔧 pwninit called without binary parameter")
             return jsonify({"error": "Binary parameter is required"}), 400
 
-        command = f"pwninit --bin {binary}"
+        command = f"pwninit --bin {_q(binary)}"
 
         if libc:
             command += f" --libc {libc}"
@@ -13113,7 +13131,7 @@ def feroxbuster():
                 "error": "URL parameter is required"
             }), 400
 
-        command = f"feroxbuster -u {url} -w {wordlist} -t {threads}"
+        command = f"feroxbuster -u {url} -w {_q(wordlist)} -t {threads}"
 
         if additional_args:
             command += f" {additional_args}"
@@ -13208,7 +13226,7 @@ def wfuzz():
                 "error": "URL parameter is required"
             }), 400
 
-        command = f"wfuzz -w {wordlist} '{url}'"
+        command = f"wfuzz -w {_q(wordlist)} '{url}'"
 
         if additional_args:
             command += f" {additional_args}"
@@ -13243,7 +13261,7 @@ def dirsearch():
             logger.warning("🌐 Dirsearch called without URL parameter")
             return jsonify({"error": "URL parameter is required"}), 400
 
-        command = f"dirsearch -u {url} -e {extensions} -w {wordlist} -t {threads}"
+        command = f"dirsearch -u {url} -e {extensions} -w {_q(wordlist)} -t {threads}"
 
         if recursive:
             command += " -r"
@@ -13387,7 +13405,7 @@ def arjun():
         command = f"arjun -u {url} -m {method} -t {threads}"
 
         if wordlist:
-            command += f" -w {wordlist}"
+            command += f" -w {_q(wordlist)}"
 
         if delay > 0:
             command += f" -d {delay}"
@@ -13456,7 +13474,7 @@ def x8():
             logger.warning("🌐 x8 called without URL parameter")
             return jsonify({"error": "URL parameter is required"}), 400
 
-        command = f"x8 -u {url} -w {wordlist} -X {method}"
+        command = f"x8 -u {url} -w {_q(wordlist)} -X {method}"
 
         if body:
             command += f" -b '{body}'"
@@ -13622,7 +13640,7 @@ def anew():
             return jsonify({"error": "Input data is required"}), 400
 
         if output_file:
-            command = f"echo '{input_data}' | anew {output_file}"
+            command = f"echo '{input_data}' | anew {_q(output_file)}"
         else:
             command = f"echo '{input_data}' | anew"
 
@@ -14773,7 +14791,7 @@ def zap():
                 command += f" -quickout {format_type}"
 
             if output_file:
-                command += f" -quickprogress -dir \"{output_file}\""
+                command += f" -quickprogress -dir \"{_q(output_file)}\""
 
             if api_key:
                 command += f" -config api.key={api_key}"
@@ -14875,7 +14893,7 @@ def dnsenum():
             command += f" --dnsserver {dns_server}"
 
         if wordlist:
-            command += f" --file {wordlist}"
+            command += f" --file {_q(wordlist)}"
 
         if additional_args:
             command += f" {additional_args}"
@@ -14943,7 +14961,7 @@ def execute_python_script():
         script_path = script_result["path"]
 
         # Execute script
-        command = f"{python_path} {script_path}"
+        command = f"{python_path} {_q(script_path)}"
         logger.info(f"🐍 Executing Python script in env {env_name}: {filename}")
         result = execute_command(command, use_cache=False)
 
@@ -15303,7 +15321,7 @@ def api_fuzzer():
             })
         else:
             # Discover endpoints using wordlist
-            command = f"ffuf -u {base_url}/FUZZ -w {wordlist} -mc 200,201,202,204,301,302,307,401,403,405 -t 50"
+            command = f"ffuf -u {base_url}/FUZZ -w {_q(wordlist)} -mc 200,201,202,204,301,302,307,401,403,405 -t 50"
 
             logger.info(f"🔍 Starting API endpoint discovery: {base_url}")
             result = execute_command(command)
@@ -15683,7 +15701,7 @@ def volatility3():
         command = f"vol.py -f {memory_file} {plugin}"
 
         if output_file:
-            command += f" -o {output_file}"
+            command += f" -o {_q(output_file)}"
 
         if additional_args:
             command += f" {additional_args}"
@@ -15725,7 +15743,7 @@ def foremost():
         if additional_args:
             command += f" {additional_args}"
 
-        command += f" {input_file}"
+        command += f" {_q(input_file)}"
 
         logger.info(f"📁 Starting Foremost file carving: {input_file}")
         result = execute_command(command)
@@ -15759,7 +15777,7 @@ def steghide():
         if action == "extract":
             command = f"steghide extract -sf {cover_file}"
             if output_file:
-                command += f" -xf {output_file}"
+                command += f" -xf {_q(output_file)}"
         elif action == "embed":
             if not embed_file:
                 return jsonify({"error": "Embed file required for embed action"}), 400
@@ -15814,7 +15832,7 @@ def exiftool():
         if additional_args:
             command += f" {additional_args}"
 
-        command += f" {file_path}"
+        command += f" {_q(file_path)}"
 
         logger.info(f"📷 Starting ExifTool analysis: {file_path}")
         result = execute_command(command)

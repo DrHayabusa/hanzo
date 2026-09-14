@@ -650,6 +650,29 @@ async function testLlm() {
 if (typeof document !== "undefined") {
 $("#quickForm").addEventListener("submit", (event) => { event.preventDefault(); $("#target").value = $("#quickTarget").value.trim(); updateWorkflowAuthorization(); showView("assessment"); $("#target").focus(); });
 $(".brand").addEventListener("click", (event) => { event.preventDefault(); showView("overview"); });
+$("#checkTarget").addEventListener("click", () => checkTargetReadiness());
+async function checkTargetReadiness() {
+  const target = $("#target").value.trim();
+  const note = $("#preflightResult");
+  if (!target) { note.textContent = "Enter a target first."; return; }
+  const button = $("#checkTarget");
+  button.disabled = true;
+  note.textContent = "Checking the target and this worker's adapters…";
+  try {
+    const data = await api("/api/assessment/preflight", { method: "POST", body: JSON.stringify({ target, stage: $("#workflowPhase").value }) });
+    const parts = [];
+    parts.push(data.valid ? `Accepted as ${data.kind}.` : `Rejected: ${data.error}`);
+    if (data.reachability && data.reachability.checked) parts.push(data.reachability.detail);
+    if (data.readiness && data.readiness.applicable) {
+      parts.push(data.readiness.detail);
+      if (data.readiness.ready.length) parts.push(`Installed for this stage: ${data.readiness.ready.join(", ")}.`);
+      if (data.readiness.missing.length) parts.push(`Not installed: ${data.readiness.missing.join(", ")}.`);
+    } else if (data.readiness) { parts.push(data.readiness.detail); }
+    parts.push(data.ready_to_run ? "Pre-flight passed; reachability is not a guarantee a scanner will succeed." : `Blocked: ${data.message}`);
+    note.textContent = parts.join(" ");
+  } catch (error) { note.textContent = `Pre-flight failed: ${error.message}`; }
+  finally { button.disabled = false; }
+}
 $("#refreshReports").addEventListener("click", () => loadReports());
 $("#reportPurge").addEventListener("click", () => purgeReports());
 document.addEventListener("click", (event) => { const button = event.target.closest("[data-report]"); if (button) openReport(button.dataset.report); });

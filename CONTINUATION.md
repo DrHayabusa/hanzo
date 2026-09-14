@@ -40,6 +40,7 @@ README.md; docs/PROGRESS.md; PROJECT_PLAN.md; docs/VALIDATION_REPORT.md; docs/CE
 | redteam_mcp.py | Central MCP facade: 23 control tools + one generated tool per bundled adapter (113 total) |
 | arsenal_mcp.py | Builds typed MCP tools from the arsenal catalog; authorization and readiness gating |
 | wordlists.py | Discovers wordlists that actually exist; classifies and validates operator paths |
+| assessment_preflight.py | Validates, reaches and reports stage readiness for a target before any scanner runs |
 | optional_mcp.py / optional_mcp_api.py | stdio/SSE/Streamable HTTP bridge, allowlists, limits, redaction, routes |
 | hanzo_store.py | SQLite workflow/exercise evidence and credential-field redaction |
 | scan_scope.py | Conservative single-target validation for automated smart scan |
