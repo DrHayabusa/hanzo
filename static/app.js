@@ -791,8 +791,14 @@ async function writeNarrative() {
 function downloadNarrative() {
   const data = state.narrative;
   if (!data) return;
-  const rows = (data.findings || []).map((item) =>
-    `| \`${item.path}\` | ${item.status ?? "—"} | ${item.size ?? ""} | ${item.note || item.evidence || ""} | ${item.source || ""} |`).join("\n");
+  // A cell value may contain "|" (httpx prints pipe-separated evidence) or a
+  // newline; either would break the table, so escape both.
+  const cell = (value) => String(value ?? "").replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ").trim();
+  const rows = (data.findings || []).map((item) => {
+    const detail = [item.note, item.evidence, item.redirect ? `redirects to ${item.redirect}` : ""]
+      .filter(Boolean).join("; ");
+    return `| \`${cell(item.path)}\` | ${item.status ?? "—"} | ${item.size ?? ""} | ${cell(detail)} | ${cell(item.source)} |`;
+  }).join("\n");
   const markdown = [
     `# Findings — ${data.asset || ""}`,
     "", `Stage: ${data.phase_label || data.phase || ""}`,

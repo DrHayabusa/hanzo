@@ -4,7 +4,7 @@
 | Check actually run | Result | Boundary |
 | --- | --- | --- |
 | Python unittest discovery | PASS — 182 tests | API, evidence, synthetic lab transport, installers, MCP, scope |
-| Node UI regressions | PASS — 27 tests | Workflows, provider states, command fields/dropdowns/confirmation/errors |
+| Node UI regressions | PASS — 34 tests | Workflows, provider states, command fields/dropdowns/confirmation/errors |
 | pip check | PASS | Existing Python 3.11 core environment |
 | JS/shell syntax | PASS | Three UI scripts and startup/bootstrap/installers |
 | Tool catalog coverage | PASS — 90/90 POST routes, 10 groups | Metadata coverage, not 90 real scanner executions |
@@ -14,6 +14,7 @@
 | Target pre-flight | PASS — 15 tests | One TCP connect plus an HTTP HEAD; never a scan |
 | Engagement stage catalog | PASS — 15 tests | 19 stages across 8 groups, each reporting this worker's real readiness |
 | Finding extraction and narrative | PASS — 18 tests | Findings parsed in Python; the model narrates only those facts and invented paths are flagged |
+| Markdown export | PASS — 7 tests | Table escaping verified against the real exporter, not a copy of it |
 | Path quoting regression | PASS — 5 tests | Guards the shell=True command strings against paths with spaces |
 | macOS arsenal install | PASS — 18 tools verified on PATH | Prebuilt binaries preferred; source builds are opt-in |
 | MCP adapter onboarding | PASS — 113 tools listed over stdio | 90 generated adapters + 23 control tools; schemas are real, execution still needs the binary |
