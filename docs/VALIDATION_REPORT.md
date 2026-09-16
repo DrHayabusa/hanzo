@@ -3,7 +3,7 @@
 
 | Check actually run | Result | Boundary |
 | --- | --- | --- |
-| Python unittest discovery | PASS — 182 tests | API, evidence, synthetic lab transport, installers, MCP, scope |
+| Python unittest discovery | PASS — 202 tests | API, evidence, synthetic lab transport, installers, MCP, scope |
 | Node UI regressions | PASS — 34 tests | Workflows, provider states, command fields/dropdowns/confirmation/errors |
 | pip check | PASS | Existing Python 3.11 core environment |
 | JS/shell syntax | PASS | Three UI scripts and startup/bootstrap/installers |
@@ -15,6 +15,7 @@
 | Engagement stage catalog | PASS — 15 tests | 19 stages across 8 groups, each reporting this worker's real readiness |
 | Finding extraction and narrative | PASS — 18 tests | Findings parsed in Python; the model narrates only those facts and invented paths are flagged |
 | Markdown export | PASS — 7 tests | Table escaping verified against the real exporter, not a copy of it |
+| Per-tool finding extraction | PASS — 20 tests | 20 tools parsed; fixtures are verbatim output from real runs |
 | Path quoting regression | PASS — 5 tests | Guards the shell=True command strings against paths with spaces |
 | macOS arsenal install | PASS — 18 tools verified on PATH | Prebuilt binaries preferred; source builds are opt-in |
 | MCP adapter onboarding | PASS — 113 tools listed over stdio | 90 generated adapters + 23 control tools; schemas are real, execution still needs the binary |
@@ -119,6 +120,55 @@ present either as complete.
 **Confirmed real exposures on the lab target:** `/.env` served in plain text with
 signing keys and an AWS-style key id; `/backups/` with directory listing including
 `meridian-db-export.sql`; `/uploads/` with directory listing including `cv.php`.
+
+## Stage-by-stage validation (2026-09-16)
+
+Each executing stage was run with its real adapters, the output stored as
+evidence, and a report generated from it. Findings counts below are what the
+extractor produced from genuine tool output.
+
+| Stage | Adapters exercised | Findings | Outcome |
+| --- | --- | --- | --- |
+| Network discovery | nmap, rustscan | 5 | Open ports 5005, 8888, 11434 with service names |
+| Web application testing | ffuf, wafw00f, dalfox | 14 | 12 paths, no WAF, and one reflected XSS |
+| API and parameter analysis | arjun | 1 | Hidden parameter `q` on /search |
+| Infrastructure as code | checkov, terrascan | 17 | 16 failed checks plus one HIGH violation |
+| Forensics and file analysis | exiftool | 1 | Notable metadata only, not every EXIF field |
+
+Every report returned an empty `unverified_paths`: the local model named no path
+that the extractor had not found.
+
+**The XSS was confirmed by hand.** dalfox reported a reflected payload on
+`/search?q=`; requesting `?q=">＜svg onload=alert(1)>` returns the tag unescaped in
+the response body, while a benign value is escaped. The finding is real.
+
+### Bugs this validation found and fixed
+
+- **dalfox never ran.** The adapter sent `--mining-dom` and `--mining-dict`, which
+  v3 removed, so every call exited 2. It also passed the URL positionally, which
+  v3 rejects. The adapter now detects whether the installed binary accepts `--url`
+  and uses `--skip-mining-*` to disable mining rather than flags that no longer
+  exist.
+- **terrascan never ran.** `-t` is the policy type (aws, azure, gcp) and `-i` is
+  the IaC type (terraform, k8s); the adapter had them swapped, so every scan
+  exited with "cloud type 'terraform' not supported".
+- **Findings were being lost.** Deduplication keyed on path and source alone, so
+  sixteen distinct checkov failures against one file collapsed into a single row.
+  The key now includes the finding itself.
+- **Fourteen tools produced no findings at all** because the extractor only knew
+  six output formats. nmap, rustscan, masscan, autorecon, ffuf, dalfox, nikto,
+  wafw00f, arjun, checkov, terrascan, trivy and exiftool now have parsers, and the
+  ANSI stripper handles ffuf's `\x1b[2K` control codes.
+- **arjun reported a phantom parameter.** "parameter detected: q, based on: body
+  length" was split on the comma, turning the rationale into a second parameter.
+
+### Tools that behaved correctly but produced nothing
+
+Worth recording so they are not mistaken for failures. `trivy` reports zero
+vulnerabilities for alpine:3.18 and alpine:3.14 — that is trivy's own result.
+`kube-bench` reports that kubectl cannot reach a cluster, which is correct with no
+cluster running. `objdump` refuses one Mach-O binary in tools/bin but reads
+/bin/ls normally, so that is objdump's limitation and not the adapter's.
 
 ## Known environment limits observed here
 The boot disk filled twice during this session. Homebrew on macOS 13 is a Tier 3 configuration and compiles

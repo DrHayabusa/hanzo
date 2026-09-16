@@ -28,7 +28,7 @@ Updated 2026-09-15 (Asia/Dubai).
 - Claude handoff, prioritized plan and operator documentation.
 
 ## Measured
-**182 Python tests / 34 JavaScript tests passed.** Dependency and syntax checks passed. Tests include a real harmless stdio MCP fixture handshake and echo call.
+**202 Python tests / 34 JavaScript tests passed.** Dependency and syntax checks passed. Tests include a real harmless stdio MCP fixture handshake and echo call.
 
 The browser command launcher executed xxd on 64 bytes of this repository's README, returned exit 0 and saved evidence. Core CVE protocol discovery returned 28 tools; BugHunter CLI reported 83 skills/15 commands; local qwen3:1.7b inference passed. Detailed boundaries: VALIDATION_REPORT.md.
 

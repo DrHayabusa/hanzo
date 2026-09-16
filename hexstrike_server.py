@@ -37,6 +37,7 @@ from typing import Dict, Any, Optional
 from collections import OrderedDict
 import shlex
 import shutil
+from functools import lru_cache
 import venv
 import zipfile
 from pathlib import Path
@@ -104,6 +105,26 @@ except PermissionError:
 logger = logging.getLogger(__name__)
 
 # Flask app configuration
+
+
+@lru_cache(maxsize=8)
+def _tool_supports_flag(binary: str, flag: str, subcommand: str = "") -> bool:
+    """Check once whether an installed tool advertises a flag.
+
+    Tools change their interface between major versions: dalfox v2 took the URL
+    positionally and used --mining-dom, while v3 requires --url and only accepts
+    --skip-mining-*. Detecting beats guessing, and beats failing at scan time.
+    """
+    executable = shutil.which(binary)
+    if not executable:
+        return False
+    argv = [executable] + ([subcommand] if subcommand else []) + ["--help"]
+    try:
+        completed = subprocess.run(argv, capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return flag in (completed.stdout or "") + (completed.stderr or "")
+
 
 def _q(value):
     """Shell-quote a filesystem path for the shell=True command strings below."""
@@ -11507,10 +11528,16 @@ def terrascan():
         severity = params.get("severity", "")
         additional_args = params.get("additional_args", "")
 
-        command = f"terrascan scan -t {scan_type} -d {iac_dir}"
+        # terrascan's -i is the IaC type (terraform, k8s, helm) and -t is the
+        # policy type (aws, azure, gcp, all). They were swapped, so every scan
+        # exited with "cloud type 'terraform' not supported".
+        command = f"terrascan scan -d {_q(iac_dir)}"
+
+        if scan_type and scan_type != "all":
+            command += f" -i {scan_type}"
 
         if policy_type:
-            command += f" -p {policy_type}"
+            command += f" -t {policy_type}"
 
         if output_format:
             command += f" -o {output_format}"
@@ -13682,16 +13709,23 @@ def dalfox():
         if pipe_mode:
             command = "dalfox pipe"
         else:
-            command = f"dalfox url {url}"
+            # v3 requires --url; v2 took the URL positionally.
+            if _tool_supports_flag("dalfox", "--url", "url"):
+                command = f"dalfox url --url {url}"
+            else:
+                command = f"dalfox url {url}"
 
         if blind:
             command += " --blind"
 
-        if mining_dom:
-            command += " --mining-dom"
+        # dalfox mines parameters by default and is told to skip, not to start.
+        # v3 removed --mining-dom/--mining-dict, so sending them exited 2 every
+        # time. --skip-mining-* is accepted by both v2 and v3.
+        if not mining_dom:
+            command += " --skip-mining-dom"
 
-        if mining_dict:
-            command += " --mining-dict"
+        if not mining_dict:
+            command += " --skip-mining-dict"
 
         if custom_payload:
             command += f" --custom-payload '{custom_payload}'"

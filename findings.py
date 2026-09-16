@@ -18,7 +18,7 @@ GOBUSTER_LINE = re.compile(
 FEROX_LINE = re.compile(
     r"^\s*(?P<status>\d{3})\s+(?:GET|POST|HEAD)\s+\S+\s+\S+\s+(?P<size>\d+)c\s+(?P<url>https?://\S+)",
     re.MULTILINE)
-ANSI = re.compile(r"\x1b\[[0-9;]*m")
+ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 # Paths worth calling out when they answer. Each entry is (pattern, what it means).
 SENSITIVE = (
@@ -158,9 +158,214 @@ def from_nuclei(output: str) -> List[Dict[str, Any]]:
     return findings
 
 
+# --- Non-HTTP tools -------------------------------------------------------
+# These do not report paths, so `path` carries the subject of the finding (a
+# port, a resource, a parameter) and `note` describes it. That keeps one report
+# table usable across every stage.
+
+PORT_LINE = re.compile(
+    r"^\s*(?P<port>\d{1,5})/(?P<proto>tcp|udp)\s+(?P<state>open|closed|filtered|open\|filtered)"
+    r"(?:\s+(?P<service>\S+))?", re.MULTILINE)
+FFUF_LINE = re.compile(
+    r"^\s*(?P<path>\S+)\s+\[Status:\s*(?P<status>\d{3}),\s*Size:\s*(?P<size>\d+)", re.MULTILINE)
+DALFOX_POC = re.compile(r"^\s*\[POC\]\[(?P<kind>[^\]]+)\]\[(?P<method>[^\]]+)\]\[(?P<where>[^\]]+)\]\s*(?P<url>\S+)",
+                        re.MULTILINE)
+NIKTO_LINE = re.compile(r"^\+\s+(?P<path>/\S*)\s*:\s*(?P<detail>.+)$", re.MULTILINE)
+
+
+def from_portscan(output: str, source: str = "nmap") -> List[Dict[str, Any]]:
+    """nmap, rustscan and masscan all print a PORT/STATE/SERVICE table."""
+    findings, seen = [], set()
+    for match in PORT_LINE.finditer(_clean(output)):
+        if match.group("state") != "open":
+            continue
+        key = (match.group("port"), match.group("proto"))
+        if key in seen:
+            continue
+        seen.add(key)
+        service = (match.group("service") or "").strip() or None
+        findings.append({
+            "path": f"{match.group('port')}/{match.group('proto')}",
+            "status": None, "size": None, "redirect": None,
+            "note": f"open port{f' serving {service}' if service else ''}",
+            "source": source,
+        })
+    return findings
+
+
+def from_ffuf(output: str) -> List[Dict[str, Any]]:
+    findings = []
+    for match in FFUF_LINE.finditer(_clean(output)):
+        path = _path_of(match.group("path"))
+        findings.append({
+            "path": path, "status": int(match.group("status")),
+            "size": int(match.group("size")), "redirect": None,
+            "note": _note_for(path), "source": "ffuf",
+        })
+    return findings
+
+
+def from_dalfox(output: str) -> List[Dict[str, Any]]:
+    """A [POC] line is a payload dalfox saw reflected, not a proven exploit."""
+    findings = []
+    for match in DALFOX_POC.finditer(_clean(output)):
+        findings.append({
+            "path": _path_of(match.group("url")), "status": None, "size": None,
+            "redirect": None, "severity": "high",
+            "note": f"reflected payload ({match.group('where')}, {match.group('method')})",
+            "evidence": "dalfox reported a proof-of-concept payload; confirm it manually",
+            "source": "dalfox",
+        })
+    return findings
+
+
+def from_nikto(output: str) -> List[Dict[str, Any]]:
+    findings = []
+    for match in NIKTO_LINE.finditer(_clean(output)):
+        path = _path_of(match.group("path"))
+        findings.append({
+            "path": path, "status": None, "size": None, "redirect": None,
+            "note": match.group("detail").strip()[:200], "source": "nikto",
+        })
+    return findings
+
+
+def from_wafw00f(output: str) -> List[Dict[str, Any]]:
+    text = _clean(output)
+    detected = re.search(r"is behind\s+(?P<waf>.+?)(?:\s+WAF)?\.?$", text, re.MULTILINE)
+    target = re.search(r"Checking\s+(?P<url>\S+)", text)
+    path = _path_of(target.group("url")) if target else "/"
+    if detected:
+        note = f"WAF detected: {detected.group('waf').strip()}"
+    elif "No WAF detected" in text:
+        note = "no WAF detected by generic fingerprinting"
+    else:
+        return []
+    return [{"path": path, "status": None, "size": None, "redirect": None,
+             "note": note, "source": "wafw00f"}]
+
+
+def from_arjun(output: str) -> List[Dict[str, Any]]:
+    """arjun writes "parameter detected: q, based on: body length".
+
+    The rationale after the comma is not a second parameter name.
+    """
+    text = _clean(output)
+    names: List[str] = []
+    for match in re.finditer(r"[Pp]arameters? (?:found|detected):\s*(?P<names>[^\n]+)", text):
+        for fragment in match.group("names").split(","):
+            name = fragment.strip()
+            if not name or name.lower().startswith("based on"):
+                continue
+            name = name.split(" based on")[0].strip()
+            if name and name not in names:
+                names.append(name)
+    return [{"path": f"?{name}", "status": None, "size": None, "redirect": None,
+             "note": "hidden parameter accepted by the endpoint", "source": "arjun"}
+            for name in names]
+
+
+# Metadata worth surfacing in a forensics report. Every other EXIF field is noise.
+EXIF_NOTABLE = (
+    "GPS Position", "GPS Latitude", "GPS Longitude", "Author", "Creator", "Artist",
+    "Owner Name", "Software", "Comment", "User Comment", "Camera Model Name",
+    "Serial Number", "Create Date", "Producer", "Title", "Company",
+)
+
+
+def from_exiftool(output: str) -> List[Dict[str, Any]]:
+    text = _clean(output)
+    name = re.search(r"^File Name\s*:\s*(?P<name>.+)$", text, re.MULTILINE)
+    subject = (name.group("name").strip() if name else "(file)")
+    findings = []
+    for line in text.splitlines():
+        if ":" not in line:
+            continue
+        field, _, value = line.partition(":")
+        field, value = field.strip(), value.strip()
+        if field in EXIF_NOTABLE and value:
+            findings.append({
+                "path": subject, "status": None, "size": None, "redirect": None,
+                "note": f"{field}: {value[:120]}", "source": "exiftool",
+            })
+    return findings
+
+
+def _json_documents(output: str) -> List[Any]:
+    text = _clean(output).strip()
+    if not text:
+        return []
+    try:
+        return [json.loads(text)]
+    except ValueError:
+        pass
+    documents = []
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                documents.append(json.loads(line))
+            except ValueError:
+                continue
+    return documents
+
+
+def from_checkov(output: str) -> List[Dict[str, Any]]:
+    findings = []
+    for document in _json_documents(output):
+        for block in (document if isinstance(document, list) else [document]):
+            if not isinstance(block, dict):
+                continue
+            for check in ((block.get("results") or {}).get("failed_checks") or []):
+                findings.append({
+                    "path": str(check.get("file_path") or check.get("resource") or "")[:200] or "(unknown)",
+                    "status": None, "size": None, "redirect": None,
+                    "severity": (check.get("severity") or "").lower() or None,
+                    "note": f"{check.get('check_id')}: {check.get('check_name')}",
+                    "source": "checkov",
+                })
+    return findings
+
+
+def from_terrascan(output: str) -> List[Dict[str, Any]]:
+    findings = []
+    for document in _json_documents(output):
+        for violation in (((document or {}).get("results") or {}).get("violations") or []):
+            findings.append({
+                "path": str(violation.get("file") or violation.get("resource_name") or "(unknown)")[:200],
+                "status": None, "size": None, "redirect": None,
+                "severity": str(violation.get("severity") or "").lower() or None,
+                "note": f"{violation.get('rule_name')}: {violation.get('description') or ''}".strip()[:200],
+                "source": "terrascan",
+            })
+    return findings
+
+
+def from_trivy(output: str) -> List[Dict[str, Any]]:
+    findings = []
+    for document in _json_documents(output):
+        for result in ((document or {}).get("Results") or []):
+            for issue in (result.get("Vulnerabilities") or []):
+                findings.append({
+                    "path": f"{result.get('Target', '')}:{issue.get('PkgName', '')}"[:200],
+                    "status": None, "size": None, "redirect": None,
+                    "severity": str(issue.get("Severity") or "").lower() or None,
+                    "note": f"{issue.get('VulnerabilityID')}: {issue.get('Title') or ''}".strip()[:200],
+                    "source": "trivy",
+                })
+    return findings
+
+
 EXTRACTORS = {
     "gobuster": from_gobuster, "feroxbuster": from_feroxbuster, "dirsearch": from_gobuster,
     "dirb": from_gobuster, "katana": from_katana, "httpx": from_httpx, "nuclei": from_nuclei,
+    "ffuf": from_ffuf, "dalfox": from_dalfox, "nikto": from_nikto, "wafw00f": from_wafw00f,
+    "arjun": from_arjun, "checkov": from_checkov, "terrascan": from_terrascan,
+    "trivy": from_trivy, "exiftool": from_exiftool,
+    "nmap": lambda out: from_portscan(out, "nmap"),
+    "rustscan": lambda out: from_portscan(out, "rustscan"),
+    "masscan": lambda out: from_portscan(out, "masscan"),
+    "autorecon": lambda out: from_portscan(out, "autorecon"),
 }
 
 
@@ -199,15 +404,19 @@ def collect(evidence: Dict[str, Any]) -> Dict[str, Any]:
         })
         findings.extend(extracted)
 
-    merged: Dict[str, Dict[str, Any]] = {}
+    # Deduplicate on what makes a finding distinct. Keying on path alone collapsed
+    # sixteen different checkov failures on one file into a single row.
+    merged: Dict[Any, Dict[str, Any]] = {}
     for finding in findings:
-        key = (finding["path"], finding.get("source"))
+        key = (finding["path"], finding.get("source"), finding.get("note"))
         existing = merged.get(key)
         if existing is None:
             merged[key] = finding
         elif existing.get("status") is None and finding.get("status") is not None:
             merged[key] = finding
-    ordered = sorted(merged.values(), key=lambda item: (item["path"], item.get("source") or ""))
+    ordered = sorted(merged.values(),
+                     key=lambda item: (item["path"], item.get("source") or "",
+                                       str(item.get("note") or "")))
     return {
         "findings": ordered,
         "tools": tools_run,
