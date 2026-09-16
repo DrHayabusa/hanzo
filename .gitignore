@@ -11,6 +11,7 @@ tools/bin/
 wordlists/
 .cache/
 tools/pyenv/
+tools/pyenvs/
 .integrations/
 .hanzo-data/
 .env

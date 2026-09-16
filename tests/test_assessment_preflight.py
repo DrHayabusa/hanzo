@@ -62,8 +62,14 @@ class ReachabilityTests(unittest.TestCase):
 
 class StageReadinessTests(unittest.TestCase):
     def test_recon_reports_installed_and_missing_adapters(self):
+        # Reconnaissance maps attack surface; port scanning is network discovery.
         readiness = preflight.stage_readiness("recon", CATALOG)
         self.assertTrue(readiness["applicable"])
+        self.assertIn("subfinder", readiness["ready"])
+        self.assertIn("amass", readiness["missing"])
+
+    def test_network_discovery_owns_the_port_scanners(self):
+        readiness = preflight.stage_readiness("network_discovery", CATALOG)
         self.assertIn("nmap", readiness["ready"])
         self.assertIn("rustscan", readiness["missing"])
 
@@ -74,6 +80,7 @@ class StageReadinessTests(unittest.TestCase):
     def test_stage_with_nothing_installed_says_so(self):
         empty = {"categories": [{"id": "network", "commands": [
             {"id": name, "installed": False} for name in preflight.STAGE_TOOLS["validate"]]}]}
+        # validate draws on nuclei, jaeles, dalfox, nikto, sqlmap and httpx
         readiness = preflight.stage_readiness("validate", empty)
         self.assertEqual(readiness["ready"], [])
         self.assertIn("No adapter", readiness["detail"])

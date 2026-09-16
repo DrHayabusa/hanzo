@@ -7,6 +7,7 @@
   <title>Hanzo // Authorized Security Lab</title>
   <link rel="icon" type="image/svg+xml" href="/static/hanzo-emblem.svg">
   <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/refinements.css">
 </head>
 <body>
   <div class="noise" aria-hidden="true"></div>
@@ -165,13 +166,13 @@
           <label for="target">Website URL, hostname, asset IP, or CVE ID</label>
           <div class="target-input"><span>⌖</span><input id="target" name="target" placeholder="http://10.20.39.11:8080 or CVE-2021-44228" autocomplete="off" required></div>
           <div class="form-row">
-            <label>Workflow step<select id="workflowPhase"><option value="profile" selected>Profile only</option><option value="recon">Recon</option><option value="bughunter">BugHunter classify</option><option value="cve_triage">CVE intelligence</option><option value="validate">Validate</option><option value="full">Full workflow</option></select></label>
-            <label>Tool limit<select id="maxTools"><option>3</option><option selected>5</option><option>8</option></select></label>
+            <label>Workflow stage<select id="workflowPhase"><option value="profile" selected>Target profiling</option><option value="recon">Reconnaissance</option><option value="bughunter">Vulnerability classification</option><option value="cve_triage">CVE intelligence</option><option value="validate">Vulnerability validation</option><option value="full">Full assessment</option></select></label>
+            <label>Maximum tools<select id="maxTools"><option>3</option><option selected>5</option><option>8</option></select></label>
           </div>
-          <div class="form-row"><button type="button" class="secondary-button" id="checkTarget">Check target readiness ⌁</button></div><p class="form-note" id="preflightResult" role="status">Optional: confirm the target is reachable and that this stage has an installed adapter, before you launch anything.</p><label class="check-row" id="authorizationRow"><input type="checkbox" id="authorization"><span>This asset is mine or explicitly authorized for active testing.</span></label>
+          <p class="form-note" id="stageDescription"></p><div class="form-row"><button type="button" class="secondary-button" id="checkTarget">Check target readiness ⌁</button></div><p class="form-note" id="preflightResult" role="status">Optional: confirm the target is reachable and that this stage has an installed adapter, before you launch anything.</p><label class="check-row" id="authorizationRow"><input type="checkbox" id="authorization"><span>This asset is mine or explicitly authorized for active testing.</span></label>
           <button type="submit" class="primary-button autopilot-button" id="runWorkflow">Run selected workflow <span>↗</span></button>
-          <p class="form-note" id="workflowNote">Profile, CVE intelligence and BugHunter classification are non-executing. Recon, Validate and Full can invoke installed scanners and require authorization.</p>
-          <div class="workflow-rail"><span data-stage="profile">PROFILE</span><i></i><span data-stage="classify">CLASSIFY</span><i></i><span data-stage="execute">EXECUTE</span><i></i><span data-stage="evidence">EVIDENCE</span></div>
+          <p class="form-note" id="workflowNote">Target profiling, CVE intelligence and vulnerability classification are non-executing. Reconnaissance, vulnerability validation and the full assessment can invoke installed scanners and require authorization.</p>
+          <div class="workflow-rail"><span data-stage="profile">PROFILING</span><i></i><span data-stage="classify">CLASSIFICATION</span><i></i><span data-stage="execute">EXECUTION</span><i></i><span data-stage="evidence">EVIDENCE</span></div>
         </form>
         <article class="panel result-panel">
           <div class="panel-head"><div><span class="section-index">/ EVIDENCE</span><h3>Workflow result</h3></div><button class="text-button" id="copyResult">COPY JSON</button></div>

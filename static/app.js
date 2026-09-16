@@ -1,6 +1,10 @@
 const state = { health: null, processes: [], result: null, chat: [], llm: null, providers: [], integrations: [], lab: null, reports: [], exercises: [], selectedReport: null, workflowRunning: false, llmConfigVersion: 0, verifiedLlm: null };
 const titles = { overview: "Overview", lab: "Lab network", assessment: "Test target", integrations: "MCP servers", tools: "Security tools", activity: "Running jobs", copilot: "AI assistant", exercises: "Lab exercises", reports: "Reports" };
-const activeWorkflowPhases = new Set(["recon", "validate", "full"]);
+const activeWorkflowPhases = new Set(["recon", "network_discovery", "network_pentest",
+  "web", "api", "validate", "cloud_aws", "cloud_kubernetes", "cloud_container",
+  "cloud_iac", "password", "binary", "forensics", "bugbounty_recon",
+  "bugbounty_hunt", "full"]);
+const stageCatalog = { groups: [], byId: new Map() };
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -52,7 +56,7 @@ function workflowRequiresAuthorization(phase, target) {
 function workflowInputError(phase, target) {
   if (!String(target).trim()) return "Enter a website URL, hostname, IP address, or CVE ID";
   if (phase === "cve_triage" && !isCveTarget(target)) return "CVE intelligence requires a CVE ID, such as CVE-2021-44228";
-  if (isCveTarget(target) && !["cve_triage", "full"].includes(phase)) return "For a CVE ID, choose CVE intelligence or the Full workflow";
+  if (isCveTarget(target) && !["cve_triage", "full"].includes(phase)) return "For a CVE ID, choose CVE intelligence or the full assessment";
   return "";
 }
 
@@ -411,7 +415,7 @@ async function runAutomatedWorkflow() {
   $("#resultSummary").classList.add("hidden");
   $("#resultJson").classList.add("hidden");
   $("#loadingResult").classList.remove("hidden");
-  $("#loadingText").textContent = `Running ${phase.replaceAll("_", " ")} workflow…`;
+  $("#loadingText").textContent = `Running ${phaseName(phase).toLowerCase()}…`;
   $("#runWorkflow").disabled = true;
   const workflow = { asset: target, phase, started_at: new Date().toISOString(), steps: [] };
   let status = "completed";
@@ -421,7 +425,7 @@ async function runAutomatedWorkflow() {
       markWorkflowStage("classify");
       await runWorkflowStep(workflow, "cve_mcp", "/api/redteam/cve/triage", { cve_id: target.toUpperCase(), depth: "quick" });
     } else {
-      if (["profile", "recon", "validate", "full"].includes(phase)) {
+      if (phase === "profile" || activeWorkflowPhases.has(phase)) {
         markWorkflowStage("profile");
         await runWorkflowStep(workflow, "hexstrike_profile", "/api/intelligence/analyze-target", { target, analysis_type: phase });
       }
@@ -429,9 +433,9 @@ async function runAutomatedWorkflow() {
         markWorkflowStage("classify");
         await runWorkflowStep(workflow, "claude_bughunter", "/api/redteam/bughunter/classify", { asset: target });
       }
-      if (["recon", "validate", "full"].includes(phase)) {
+      if (activeWorkflowPhases.has(phase)) {
         markWorkflowStage("execute");
-        const objective = phase === "recon" ? "reconnaissance" : (phase === "full" ? "comprehensive" : "web_application");
+        const objective = stageCatalog.byId.get(phase)?.objective || "comprehensive";
         await runWorkflowStep(workflow, "hexstrike_scan", "/api/intelligence/smart-scan", { target, objective, max_tools: Number($("#maxTools").value), authorization_confirmed: true });
       }
     }
@@ -465,7 +469,7 @@ async function runAutomatedWorkflow() {
   loadReports(true);
   renderWorkflowResult(workflow, status);
   if (status === "completed") {
-    showToast(`Hanzo ${phase.replaceAll("_", " ")} workflow completed`);
+    showToast(`${phaseName(phase)} completed`);
     loadProcesses(true);
   } else showToast(workflow.error || workflow.evidence_error || "Workflow needs review: inspect failed or skipped tools", true);
   $("#loadingResult").classList.add("hidden");
@@ -558,7 +562,24 @@ function downloadJson(value, filename) {
   const link = document.createElement("a"); link.href = url; link.download = filename;
   document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-function reportLabel(run) { return String(run.exercise_id || run.phase || "Assessment").replaceAll("_", " "); }
+/* One source of proper names. Backend phase ids stay as they are; only the
+   words the operator reads are spelled out in full. */
+const PHASE_NAMES = {
+  profile: "Target profiling",
+  recon: "Reconnaissance",
+  bughunter: "Vulnerability classification",
+  cve_triage: "CVE intelligence",
+  validate: "Vulnerability validation",
+  full: "Full assessment",
+  command: "Direct tool command",
+  mcp: "MCP tool call",
+};
+function phaseName(value) {
+  const key = String(value || "").toLowerCase();
+  if (PHASE_NAMES[key]) return PHASE_NAMES[key];
+  return String(value || "Assessment").replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
+}
+function reportLabel(run) { return phaseName(run.exercise_id || run.phase || "Assessment"); }
 function statusBadge(status) {
   const safeClass = ["completed", "failed", "needs_review"].includes(status) ? status : "";
   return '<span class="status-badge ' + safeClass + '">' + escapeHtml(String(status || "unknown").replaceAll("_", " ")) + '</span>';
@@ -716,7 +737,60 @@ $("#testTelemetry").addEventListener("click", async () => {
   catch (error) { showToast(error.message, true); }
   finally { loadTelemetry(); }
 });
+/* The stage menu is built from the worker's catalog so the console, the
+   pre-flight check and the evidence store cannot drift apart. */
+async function loadStages() {
+  const select = $("#workflowPhase");
+  if (!select) return;
+  const previous = select.value;
+  try {
+    const data = await api("/api/assessment/stages");
+    stageCatalog.groups = data.groups || [];
+    stageCatalog.byId = new Map();
+    activeWorkflowPhases.clear();
+    const fragment = document.createDocumentFragment();
+    stageCatalog.groups.forEach((group) => {
+      const optgroup = document.createElement("optgroup");
+      optgroup.label = group.label;
+      (group.stages || []).forEach((stage) => {
+        stageCatalog.byId.set(stage.id, stage);
+        if (stage.executes) activeWorkflowPhases.add(stage.id);
+        const option = document.createElement("option");
+        option.value = stage.id;
+        const ready = stage.readiness || {};
+        option.textContent = ready.applicable
+          ? `${stage.label} (${ready.ready.length}/${ready.ready.length + ready.missing.length} ready)`
+          : stage.label;
+        if (ready.applicable && !ready.ready.length) option.dataset.unavailable = "true";
+        optgroup.append(option);
+      });
+      fragment.append(optgroup);
+    });
+    select.replaceChildren(fragment);
+    select.value = stageCatalog.byId.has(previous) ? previous : "profile";
+    describeStage();
+  } catch (error) {
+    $("#preflightResult").textContent = `Stage catalog unavailable: ${error.message}. The listed stages may be incomplete.`;
+  }
+}
+function describeStage() {
+  const stage = stageCatalog.byId.get($("#workflowPhase").value);
+  const note = $("#stageDescription");
+  if (!note) return;
+  if (!stage) { note.textContent = ""; return; }
+  const ready = stage.readiness || {};
+  const parts = [stage.description];
+  if (!stage.executes) parts.push("Non-executing: no scanner is launched and no authorization is needed.");
+  else if (ready.applicable) {
+    parts.push(ready.detail);
+    if (ready.ready.length) parts.push(`Installed: ${ready.ready.join(", ")}.`);
+    if (ready.missing.length) parts.push(`Not installed: ${ready.missing.join(", ")}.`);
+  }
+  note.textContent = parts.join(" ");
+}
+$("#workflowPhase").addEventListener("change", describeStage);
 window.addEventListener("hashchange", () => showView(location.hash.slice(1)));
+loadStages();
 loadReports(true);
 loadTelemetry();
 }

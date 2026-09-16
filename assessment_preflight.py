@@ -18,17 +18,14 @@ import urllib.request
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlsplit
 
+import pentest_stages
 from scan_scope import validate_scan_target
 
 CVE_PATTERN = re.compile(r"^CVE-\d{4}-\d{4,7}$", re.IGNORECASE)
 DEFAULT_PORTS = {"http": 80, "https": 443}
-# Adapters each workflow stage can actually invoke, by catalog id.
-STAGE_TOOLS = {
-    "recon": ("nmap", "rustscan", "masscan", "subfinder", "amass", "httpx", "katana",
-              "gobuster", "ffuf", "feroxbuster", "nuclei"),
-    "validate": ("nuclei", "nikto", "sqlmap", "wpscan", "dalfox", "httpx"),
-    "full": ("nmap", "httpx", "nuclei", "gobuster", "ffuf", "nikto", "subfinder", "katana"),
-}
+# Kept for callers that ask which adapters a stage uses; pentest_stages owns the list.
+STAGE_TOOLS = {stage["id"]: tuple(stage["tools"])
+               for stage in pentest_stages.all_stages() if stage["tools"]}
 
 
 def classify(target: str) -> str:

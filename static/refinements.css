@@ -1,0 +1,230 @@
+/* HANZO refinement layer.
+   Loaded after styles.css. It raises the console from a flat dark panel set to a
+   composed instrument: real elevation, a status palette that reads at a glance,
+   readiness meters, and calmer typography. Structure and class names are
+   unchanged, so the layer can be removed without breaking any view. */
+
+:root {
+  --elev-1: 0 1px 2px rgba(0, 0, 0, .45);
+  --elev-2: 0 6px 20px -8px rgba(0, 0, 0, .65), 0 1px 3px rgba(0, 0, 0, .4);
+  --elev-3: 0 22px 48px -22px rgba(0, 0, 0, .8), 0 2px 8px rgba(0, 0, 0, .45);
+  --gold-soft: rgba(216, 186, 131, .13);
+  --gold-line: rgba(216, 186, 131, .32);
+  --green-soft: rgba(135, 180, 147, .13);
+  --red-soft: rgba(207, 98, 86, .13);
+  --radius: 10px;
+  --radius-sm: 7px;
+  --ease: cubic-bezier(.22, .61, .36, 1);
+}
+
+body {
+  background:
+    radial-gradient(1100px 620px at 78% -8%, rgba(216, 186, 131, .055), transparent 62%),
+    radial-gradient(760px 480px at 8% 102%, rgba(135, 180, 147, .04), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ---- Typography ------------------------------------------------------- */
+h2, h3, h4 { letter-spacing: -.02em; }
+.section-heading h2 { font-weight: 640; }
+.section-index { font-weight: 600; opacity: .95; }
+p, label { letter-spacing: .005em; }
+
+/* ---- Surfaces --------------------------------------------------------- */
+.panel, .tool-card, .report-card, .integration-card, .lab-node,
+.metric-grid, .hub-summary, .lab-host-bar {
+  border-radius: var(--radius);
+  box-shadow: var(--elev-2);
+  transition: border-color .2s var(--ease), box-shadow .2s var(--ease),
+              transform .2s var(--ease);
+}
+.panel { background: linear-gradient(158deg, #191b15 0%, #14160f 58%, #121409 100%); }
+.tool-card:hover, .integration-card:hover, .report-card:hover, .lab-node:hover {
+  border-color: var(--gold-line);
+  box-shadow: var(--elev-3);
+}
+/* Panels are containers, not targets: only cards lift. */
+.tool-card:hover, .report-card:hover { transform: translateY(-2px); }
+
+.panel-head {
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 20px;
+}
+.panel-head h3 { letter-spacing: -.015em; }
+
+/* ---- Navigation ------------------------------------------------------- */
+.sidebar { box-shadow: 1px 0 0 rgba(255, 255, 255, .02); }
+.nav-item {
+  border-radius: 0 8px 8px 0;
+  transition: background .18s var(--ease), color .18s var(--ease),
+              border-left-color .18s var(--ease);
+}
+.nav-item.active {
+  background: linear-gradient(90deg, rgba(216, 186, 131, .17), rgba(216, 186, 131, .03) 72%, transparent);
+  box-shadow: inset 0 0 0 1px rgba(216, 186, 131, .08);
+}
+.nav-item small {
+  background: var(--gold-soft);
+  border: 1px solid rgba(216, 186, 131, .25);
+  border-radius: 999px;
+  padding: 2px 7px;
+  line-height: 1.5;
+}
+
+/* ---- Controls --------------------------------------------------------- */
+.primary-button {
+  box-shadow: 0 2px 14px -4px rgba(216, 186, 131, .5), var(--elev-1);
+  transition: transform .16s var(--ease), box-shadow .2s var(--ease), background .2s var(--ease);
+}
+.primary-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px -6px rgba(216, 186, 131, .55), var(--elev-2);
+}
+.primary-button:active:not(:disabled) { transform: translateY(0); }
+.secondary-button, .ghost-button {
+  transition: border-color .18s var(--ease), background .18s var(--ease), color .18s var(--ease);
+}
+.secondary-button:hover:not(:disabled), .ghost-button:hover:not(:disabled) {
+  box-shadow: var(--elev-1);
+}
+button:disabled { filter: saturate(.55); }
+
+input:not([type=checkbox]), select, textarea {
+  border-radius: var(--radius-sm);
+  background: #0f130d;
+  transition: border-color .16s var(--ease), box-shadow .16s var(--ease), background .16s var(--ease);
+}
+input:not([type=checkbox]):hover, select:hover, textarea:hover { border-color: #5a6349; }
+input:not([type=checkbox]):focus, select:focus, textarea:focus {
+  border-color: var(--gold);
+  background: #131811;
+  box-shadow: 0 0 0 3px rgba(216, 186, 131, .13);
+}
+/* Native arrow, drawn so the control does not read as a plain text box. */
+select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--gold) 50%),
+    linear-gradient(135deg, var(--gold) 50%, transparent 50%);
+  background-position: calc(100% - 18px) calc(50% + 1px), calc(100% - 13px) calc(50% + 1px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 34px;
+}
+select:disabled { opacity: .55; }
+select optgroup {
+  background: #10140d;
+  color: var(--gold);
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: .04em;
+}
+select option { color: var(--text); font-weight: 400; padding: 4px; }
+input[type=search] { padding-left: 13px; }
+
+.check-row {
+  border: 1px solid #3c4531;
+  border-radius: var(--radius-sm);
+  padding: 14px 15px;
+  background: #12160f;
+  transition: border-color .18s var(--ease), background .18s var(--ease);
+}
+.check-row:hover { border-color: #55603f; }
+.check-row:has(input:checked) {
+  border-color: var(--gold-line);
+  background: rgba(216, 186, 131, .07);
+}
+
+/* ---- Status language -------------------------------------------------- */
+.status-badge, .integration-status, .pill, .live-tag, .tool-chip {
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-weight: 500;
+}
+.status-badge.completed, .integration-status.online, .integration-status.ready {
+  background: var(--green-soft);
+}
+.status-badge.failed, .status-badge.needs_review, .integration-status.error {
+  background: var(--red-soft);
+}
+.tool-chip { border-radius: 6px; transition: border-color .16s var(--ease), color .16s var(--ease); }
+.tool-chip.online { background: var(--green-soft); }
+.tool-chip:hover { border-color: var(--gold-line); color: var(--text); }
+
+/* Readiness meters: the bar carries the same meaning as the number beside it. */
+.bar { height: 6px; background: #232a1d; overflow: hidden; }
+.bar i {
+  background: linear-gradient(90deg, #b99e69, #e0c895);
+  transition: width .45s var(--ease);
+}
+.category-row { font-size: 10px; }
+.category-row span { font-variant-numeric: tabular-nums; }
+
+.metric strong, .hub-summary strong, .system-stats strong { font-variant-numeric: tabular-nums; }
+.metric-grid, .hub-summary { background: linear-gradient(150deg, #181a14, #131510); }
+
+/* ---- Evidence and output --------------------------------------------- */
+pre {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(180deg, #0b0f08, #0d1109);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03);
+  scrollbar-width: thin;
+  scrollbar-color: #3a4430 transparent;
+}
+pre::-webkit-scrollbar { width: 10px; height: 10px; }
+pre::-webkit-scrollbar-thumb { background: #37412d; border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
+pre::-webkit-scrollbar-thumb:hover { background: #4b5840; background-clip: content-box; }
+
+.result-summary div {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(150deg, #121710, #0e1209);
+}
+.form-note { line-height: 1.75; }
+/* The launcher's own notes sit in a quiet block so they read as guidance. */
+#arsenalDescription, #arsenalReadiness, #stageDescription, #preflightResult {
+  border-left: 2px solid var(--gold-line);
+  padding: 10px 0 10px 13px;
+  background: linear-gradient(90deg, rgba(216, 186, 131, .05), transparent 70%);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+#arsenalSearch { max-width: 100%; }
+
+/* ---- Reports ---------------------------------------------------------- */
+.report-card { background: linear-gradient(150deg, #181a14, #131510); }
+.report-card [data-delete-report] { color: #d79c8d; }
+.report-card [data-delete-report]:hover { color: var(--red); }
+#reportRetention .form-row { align-items: end; margin-bottom: 0; }
+
+/* ---- Feedback --------------------------------------------------------- */
+.toast { border-radius: var(--radius); box-shadow: var(--elev-3); }
+.loading-state i { border-top-color: var(--gold); }
+.empty-state { gap: 12px; }
+.empty-state > span { opacity: .85; }
+
+/* ---- Focus ------------------------------------------------------------ */
+button:focus-visible, a:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* ---- Density at width ------------------------------------------------- */
+@media (min-width: 1600px) {
+  .view { padding-inline: 48px; }
+  .panel { padding: 26px; }
+}
+@media (max-width: 600px) {
+  .panel, .tool-card, .report-card { box-shadow: var(--elev-1); }
+  .check-row { padding: 12px; }
+  #reportRetention .form-row { grid-template-columns: 1fr; gap: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tool-card:hover, .report-card:hover, .primary-button:hover:not(:disabled) { transform: none; }
+  .bar i { transition: none; }
+}

@@ -74,6 +74,7 @@ from arsenal_catalog import build_catalog
 from scan_scope import validate_scan_target
 import wordlists as wordlist_catalog
 import assessment_preflight
+import pentest_stages
 
 # ============================================================================
 # LOGGING CONFIGURATION (MUST BE FIRST)
@@ -173,6 +174,15 @@ def arsenal_wordlists():
     """List wordlists that actually exist on this worker. Never invents a path."""
     fresh = request.args.get("refresh", "").lower() in {"1", "true", "yes"}
     return jsonify(wordlist_catalog.discover(PROJECT_DIR, use_cache=not fresh))
+
+
+@app.get("/api/assessment/stages")
+def assessment_stages_route():
+    """The engagement stages this console offers, with each one's real readiness."""
+    return jsonify({
+        "groups": pentest_stages.catalog_with_readiness(build_catalog(PROJECT_DIR)),
+        "note": "Readiness reflects executables found on this worker, not a proof the stage will succeed.",
+    })
 
 
 @app.post("/api/assessment/preflight")
@@ -9276,7 +9286,7 @@ def hanzo_workflows():
     status = str(payload.get("status", "completed")).strip()
     if not asset or len(asset) > 2048:
         return jsonify({"error": "A valid asset is required"}), 400
-    if phase not in {"profile", "recon", "bughunter", "cve_triage", "validate", "full", "command", "mcp"}:
+    if phase not in pentest_stages.valid_phases():
         return jsonify({"error": "Unsupported workflow phase"}), 400
     result = payload.get("result")
     if not isinstance(result, dict):

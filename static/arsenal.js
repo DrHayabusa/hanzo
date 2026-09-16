@@ -103,12 +103,17 @@
       heading.append(this.element("h3", "HexStrike command launcher"));
       const reload = this.element("button", "Refresh catalog ↻", "arsenalRefresh", "text-button");
       reload.type = "button"; reload.addEventListener("click", () => this.load()); heading.append(reload); panel.append(heading);
-      panel.append(this.element("p", "Select a category and command, review its arguments, then explicitly confirm your authorized scope. These are the worker’s real API routes; missing executables are not marked ready.", undefined, "form-note"));
+      panel.append(this.element("p", "Every adapter this worker exposes is in one list, grouped by category. Filter by name, category or description, review the arguments, then confirm your authorized scope. These are the worker’s real API routes; an executable that is absent is not marked ready.", undefined, "form-note"));
       const form = this.element("form", undefined, "arsenalForm");
+      const search = this.element("input", undefined, "arsenalSearch");
+      search.type = "search"; search.placeholder = "Filter tools by name, category or description";
+      search.autocomplete = "off";
+      form.append(this.label("Find a tool", search));
       const row = this.element("div", undefined, undefined, "form-row");
       const category = this.element("select", undefined, "arsenalCategory");
       const command = this.element("select", undefined, "arsenalCommand");
-      row.append(this.label("Category", category), this.label("Command", command)); form.append(row);
+      row.append(this.label("Category", category), this.label("Tool", command)); form.append(row);
+      search.addEventListener("input", () => this.selectCategory());
       form.append(this.element("p", "Loading the worker catalog…", "arsenalDescription", "form-note"));
       form.append(this.element("p", "", "arsenalReadiness", "form-note"));
       form.append(this.element("div", undefined, "arsenalFields", "provider-form"));
@@ -139,11 +144,15 @@
         this.categories = (catalog.categories || []).filter((category) => Array.isArray(category.commands));
         await this.loadWordlists();
         this.nodes.arsenalCategory.replaceChildren();
+        const total = this.categories.reduce((sum, item) => sum + item.commands.length, 0);
+        const readyTotal = this.categories.reduce((sum, item) => sum + item.commands.filter((c) => c.installed === true).length, 0);
+        const every = this.element("option", `All categories (${readyTotal}/${total} ready)`);
+        every.value = "__all__"; this.nodes.arsenalCategory.append(every);
         this.categories.forEach((category) => {
-          const ready = category.commands.filter((command) => command.installed !== false).length;
+          const ready = category.commands.filter((command) => command.installed === true).length;
           const option = this.element("option", `${category.label || category.id} (${ready}/${category.commands.length} ready)`); option.value = category.id; this.nodes.arsenalCategory.append(option);
         });
-        if (this.categories.length) this.nodes.arsenalCategory.value = this.categories[0].id;
+        this.nodes.arsenalCategory.value = "__all__";
         this.selectCategory();
       } catch (error) {
         this.command = null; this.nodes.arsenalDescription.textContent = `Catalog unavailable: ${error.message}`; this.nodes.arsenalStatus.textContent = "No command executed. Refresh the catalog after restoring the worker.";
@@ -158,20 +167,53 @@
           .map((item) => ({ ...item, group: group.id, groupLabel: group.label })));
       } catch { this.wordlistCatalog = null; this.wordlists = []; }
     }
+    /* One dropdown reaches every adapter: categories become option groups, and
+       the filter narrows by name, category or description. */
+    visibleCategories() {
+      const selected = this.nodes.arsenalCategory.value;
+      const needle = String(this.nodes.arsenalSearch?.value || "").trim().toLowerCase();
+      const chosen = selected === "__all__" ? this.categories
+        : this.categories.filter((item) => item.id === selected);
+      if (!needle) return chosen.map((item) => ({ ...item, commands: item.commands.slice() }));
+      return chosen
+        .map((item) => ({
+          ...item,
+          commands: item.commands.filter((command) => [command.id, command.label, command.tool,
+            command.description, item.label, item.id]
+            .some((value) => String(value || "").toLowerCase().includes(needle))),
+        }))
+        .filter((item) => item.commands.length);
+    }
     selectCategory() {
-      const category = this.categories.find((item) => item.id === this.nodes.arsenalCategory.value);
+      const previous = this.nodes.arsenalCommand.value;
+      const groups = this.visibleCategories();
       this.nodes.arsenalCommand.replaceChildren();
-      (category?.commands || []).forEach((command) => {
-        const option = this.element("option", `${command.label || command.id}${readinessMark(command)}`); option.value = command.id; this.nodes.arsenalCommand.append(option);
+      let flat = [];
+      groups.forEach((category) => {
+        const optgroup = this.doc.createElement("optgroup");
+        const ready = category.commands.filter((command) => command.installed === true).length;
+        optgroup.label = `${category.label || category.id} — ${ready}/${category.commands.length} ready`;
+        category.commands.forEach((command) => {
+          const option = this.element("option", `${command.label || command.id}${readinessMark(command)}`);
+          option.value = command.id; optgroup.append(option); flat.push(command);
+        });
+        this.nodes.arsenalCommand.append(optgroup);
       });
-      const runnable = (category?.commands || []).find((command) => command.installed !== false);
-      if (runnable) this.nodes.arsenalCommand.value = runnable.id;
-      else if (category?.commands.length) this.nodes.arsenalCommand.value = category.commands[0].id;
+      this.nodes.arsenalCommand.disabled = flat.length === 0;
+      if (!flat.length) {
+        const none = this.element("option", "No tool matches this filter"); none.value = "";
+        this.nodes.arsenalCommand.append(none);
+      } else if (flat.some((command) => command.id === previous)) {
+        this.nodes.arsenalCommand.value = previous;
+      } else {
+        const runnable = flat.find((command) => command.installed === true) || flat[0];
+        this.nodes.arsenalCommand.value = runnable.id;
+      }
       this.selectCommand();
     }
     selectCommand() {
-      const category = this.categories.find((item) => item.id === this.nodes.arsenalCategory.value);
-      this.command = category?.commands.find((item) => item.id === this.nodes.arsenalCommand.value) || null;
+      const wanted = this.nodes.arsenalCommand.value;
+      this.command = this.categories.flatMap((item) => item.commands).find((item) => item.id === wanted) || null;
       this.fields = this.command?.fields || []; this.inputs = [];
       this.nodes.arsenalFields.replaceChildren();
       this.nodes.arsenalDescription.textContent = this.command?.description || (this.command ? this.command.endpoint : "No commands registered.");

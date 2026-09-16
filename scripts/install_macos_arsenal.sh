@@ -23,11 +23,15 @@ fi
 command -v brew >/dev/null 2>&1 || {
   echo "Homebrew is required: https://brew.sh" >&2; exit 1; }
 
+# Several adapters have no wheels for the newest Python. Prefer the interpreter
+# the project itself targets, and fall back only if it is absent.
+TOOL_PYTHON="$(command -v python3.11 || command -v python3.12 || command -v python3)"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPORT_DIR="${PROJECT_DIR}/.hanzo-data"
 BIN_DIR="${PROJECT_DIR}/tools/bin"
-TOOLS_VENV="${PROJECT_DIR}/tools/pyenv"
+TOOLS_VENVS="${PROJECT_DIR}/tools/pyenvs"
 
 # Keep download and build caches on the volume the project lives on. Homebrew,
 # Go and pip otherwise fill the boot disk, which is what breaks these installs.
@@ -54,12 +58,20 @@ release_binaries=(
   "epi052/feroxbuster|aarch64-macos-feroxbuster.tar.gz|feroxbuster"
   "hahwul/dalfox|*macos-aarch64.tar.gz|dalfox"
   "lc/gau|*darwin_arm64.tar.gz|gau"
+  "aquasecurity/trivy|*macOS-ARM64.tar.gz|trivy"
+  "aquasecurity/kube-bench|*darwin_arm64.tar.gz|kube-bench"
+  "tenable/terrascan|*Darwin_arm64.tar.gz|terrascan"
+  "jaeles-project/jaeles|*macos-arm64.zip|jaeles"
 )
 if [[ "$ARCH" != "arm64" ]]; then
   release_binaries=(
     "epi052/feroxbuster|x86_64-macos-feroxbuster.tar.gz|feroxbuster"
     "hahwul/dalfox|*macos-x86_64.tar.gz|dalfox"
     "lc/gau|*darwin_amd64.tar.gz|gau"
+    "aquasecurity/trivy|*macOS-64bit.tar.gz|trivy"
+    "aquasecurity/kube-bench|*darwin_amd64.tar.gz|kube-bench"
+    "tenable/terrascan|*Darwin_x86_64.tar.gz|terrascan"
+    "jaeles-project/jaeles|*macos-amd64.zip|jaeles"
   )
 fi
 
@@ -70,10 +82,11 @@ brew_core=(
   nmap masscan rustscan arp-scan
   nikto amass fierce arjun
 )
+# Kept here only where no prebuilt binary or pip package exists. On macOS 13
+# these compile from source, so they are deliberately outside --core.
 brew_full=(
   hydra john-jumbo hashcat
-  gdb radare2 binwalk exiftool foremost
-  trivy checkov terrascan prowler kube-bench
+  gdb radare2 exiftool foremost
 )
 
 # Go adapters with no Homebrew formula. Installed into tools/bin.
@@ -86,9 +99,25 @@ go_core=(
 # Go builds write to GOMODCACHE/GOCACHE, both redirected to the project volume.
 go_full=("github.com/jaeles-project/jaeles@latest|jaeles")
 
-# Python adapters with no Homebrew formula. Installed into an isolated tools venv.
-pip_core=(wafw00f dirsearch paramspider uro)
-pip_full=(smbmap ropper volatility3 wfuzz)
+# Python adapters, each in its own venv. prowler, scoutsuite and pacu pin
+# conflicting boto3 versions, so a single shared venv cannot hold them all.
+# Entries are package|command.
+pip_core=(
+  "wafw00f|wafw00f"
+  "dirsearch|dirsearch"
+  "uro|uro"
+)
+pip_full=(
+  "smbmap|smbmap"
+  "ROPgadget|ROPgadget"
+  "volatility3|vol"
+  "binwalk|binwalk"
+  "checkov|checkov"
+  "prowler|prowler"
+  "scoutsuite|scout"
+  "pacu|pacu"
+  "kube-hunter|kube-hunter"
+)
 
 # Adapters that are genuinely not installable this way on macOS.
 unavailable=(
@@ -97,6 +126,9 @@ unavailable=(
   "burpsuite - install Burp Suite and its MCP Server extension manually"
   "netexec / enum4linux / enum4linux-ng / responder / nbtscan / rpcclient - Linux-oriented SMB/AD tooling; use the Kali worker"
   "dirb / dotdotpwn / xsser / wpscan / steghide - no maintained macOS formula; use the Kali worker"
+  "netexec - not published to PyPI under that name; install from its repository or use the Kali worker"
+  "wfuzz - needs pycurl, which needs libcurl headers to build on macOS; use the Kali worker"
+  "ropper - its filebytes dependency fails to build on current Python; use the Kali worker"
   "ghidra (analyzeHeadless) - brew install --cask ghidra, then set its path"
   "scout-suite / pacu / kube-hunter / clair / falco / docker-bench-security - service or cloud tooling with their own setup"
   "angr / pwntools / one_gadget / libc-database / gdb-peda / pwninit - exploit-dev extras with their own runtimes"
@@ -115,12 +147,12 @@ if (( DRY_RUN )); then
   printf 'Prebuilt binary plan (no changes):\n'; printf '  %s\n' "${release_binaries[@]##*|}"
   printf 'Homebrew plan:\n'; printf '  %s\n' "${brew_packages[@]}"
   printf 'Go plan:\n'; printf '  %s\n' "${go_packages[@]%%|*}"
-  printf 'Python plan:\n'; printf '  %s\n' "${pip_packages[@]}"
+  printf 'Python plan:\n'; printf '  %s\n' "${pip_packages[@]%%|*}"
   printf 'Not installable on macOS:\n'; printf '  %s\n' "${unavailable[@]}"
   exit 0
 fi
 
-mkdir -p "$REPORT_DIR" "$BIN_DIR" || exit 1
+mkdir -p "$REPORT_DIR" "$BIN_DIR" "$TOOLS_VENVS" || exit 1
 RUN_DIR="$(mktemp -d "$REPORT_DIR/macos-arsenal.XXXXXX")" || exit 1
 REPORT_FILE="$RUN_DIR/report.txt"
 printf 'HANZO macOS arsenal installation %s\n\n' "$PROFILE" > "$REPORT_FILE"
@@ -240,37 +272,53 @@ else
 fi
 
 echo
-echo "== Python adapters into an isolated venv =="
-if [[ ! -x "$TOOLS_VENV/bin/python" ]]; then
-  python3 -m venv "$TOOLS_VENV" > "$RUN_DIR/pyenv.log" 2>&1 || {
-    printf 'FAILED  tools venv creation (see %s)\n' "$RUN_DIR/pyenv.log" | tee -a "$REPORT_FILE"
-    failed=$((failed + 1))
-  }
-fi
-if [[ -x "$TOOLS_VENV/bin/python" ]]; then
-  for package in "${pip_packages[@]}"; do
-    boot_space_ok || break
-    if "$TOOLS_VENV/bin/python" -m pip install --quiet --upgrade "$package" > "$RUN_DIR/pip-$package.log" 2>&1; then
+echo "== Python adapters, each in its own venv =="
+for entry in "${pip_packages[@]}"; do
+  boot_space_ok || break
+  package="${entry%%|*}"; binary="${entry##*|}"
+  venv="$TOOLS_VENVS/$package"
+  if [[ -x "$BIN_DIR/$binary" || -x "$venv/bin/$binary" ]]; then
+    printf 'ALREADY INSTALLED  %s\n' "$package" | tee -a "$REPORT_FILE"
+  else
+    if [[ ! -x "$venv/bin/python" ]]; then
+      "$TOOL_PYTHON" -m venv "$venv" > "$RUN_DIR/pyenv-$package.log" 2>&1 || {
+        printf 'FAILED  %s venv creation (see %s)\n' "$package" "$RUN_DIR/pyenv-$package.log" | tee -a "$REPORT_FILE"
+        failed=$((failed + 1)); continue; }
+    fi
+    if "$venv/bin/python" -m pip install --quiet --upgrade "$package" \
+         > "$RUN_DIR/pip-$package.log" 2>&1; then
       printf 'INSTALLED  %s\n' "$package" | tee -a "$REPORT_FILE"
     else
       printf 'FAILED  %s (see %s)\n' "$package" "$RUN_DIR/pip-$package.log" | tee -a "$REPORT_FILE"
-      failed=$((failed + 1))
-      continue
+      failed=$((failed + 1)); rm -rf "$venv"; continue
     fi
-    # Expose only the console scripts this package actually provides, and never
-    # overwrite a real binary already in tools/bin. A blanket link here would
-    # shadow ProjectDiscovery httpx with the Python httpx library's CLI.
-    while IFS= read -r name; do
-      [[ -z "$name" ]] && continue
-      script="$TOOLS_VENV/bin/$name"
-      [[ -x "$script" ]] || continue
-      if [[ -e "$BIN_DIR/$name" && ! -L "$BIN_DIR/$name" ]]; then
-        printf 'SKIPPED LINK  %s already exists in tools/bin as a real binary\n' \
-          "$name" | tee -a "$REPORT_FILE"
-        continue
-      fi
-      ln -sf "$script" "$BIN_DIR/$name"
-    done < <("$TOOLS_VENV/bin/python" - "$package" <<'PYEOF'
+  fi
+  # Link the command this package is wanted for, then any console scripts it
+  # declares. Never replace a real binary: a blanket link once shadowed
+  # ProjectDiscovery httpx with the Python httpx library's CLI.
+  link_script() {
+    # Write a /bin/sh wrapper rather than a symlink. A pip console script carries
+    # a "#!<venv>/bin/python" shebang, and a shebang cannot contain a space, so a
+    # symlink to it fails outright when the project path has one.
+    local name="$1" script="$venv/bin/$1"
+    [[ -x "$script" ]] || return 0
+    if [[ -e "$BIN_DIR/$name" && ! -L "$BIN_DIR/$name" ]] && ! head -1 "$BIN_DIR/$name" 2>/dev/null | grep -q '^#!/bin/sh'; then
+      printf 'SKIPPED LINK  %s already exists in tools/bin as a real binary\n' "$name" | tee -a "$REPORT_FILE"
+      return 0
+    fi
+    rm -f "$BIN_DIR/$name"
+    {
+      printf '#!/bin/sh\n'
+      printf '# Generated by install_macos_arsenal.sh; runs the tool from its own venv.\n'
+      printf 'exec "%s/bin/python" "%s/bin/%s" "$@"\n' "$venv" "$venv" "$name"
+    } > "$BIN_DIR/$name"
+    chmod +x "$BIN_DIR/$name"
+  }
+  link_script "$binary"
+  while IFS= read -r name; do
+    [[ -z "$name" ]] && continue
+    link_script "$name"
+  done < <("$venv/bin/python" - "$package" <<'PYEOF'
 import sys
 from importlib.metadata import distribution, PackageNotFoundError
 try:
@@ -282,14 +330,8 @@ for entry in entries:
         print(entry.name)
 PYEOF
 )
-  done
-  for package in "${pip_packages[@]}"; do
-    case "$package" in
-      volatility3) verify "vol" "$package" ;;
-      *) verify "$package" "$package" ;;
-    esac
-  done
-fi
+  verify "$binary" "$package"
+done
 
 printf '\n%s\n' 'NOT INSTALLABLE THIS WAY ON macOS' | tee -a "$REPORT_FILE"
 printf -- '- %s\n' "${unavailable[@]}" | tee -a "$REPORT_FILE"

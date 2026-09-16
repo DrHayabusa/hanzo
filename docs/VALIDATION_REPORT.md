@@ -3,7 +3,7 @@
 
 | Check actually run | Result | Boundary |
 | --- | --- | --- |
-| Python unittest discovery | PASS — 148 tests | API, evidence, synthetic lab transport, installers, MCP, scope |
+| Python unittest discovery | PASS — 164 tests | API, evidence, synthetic lab transport, installers, MCP, scope |
 | Node UI regressions | PASS — 27 tests | Workflows, provider states, command fields/dropdowns/confirmation/errors |
 | pip check | PASS | Existing Python 3.11 core environment |
 | JS/shell syntax | PASS | Three UI scripts and startup/bootstrap/installers |
@@ -11,7 +11,8 @@
 | Optional MCP stdio fixture | PASS | Real temporary initialize/list/schema/allowlisted echo call |
 | Optional HTTP transports | PASS with mocks | SSE/Streamable HTTP wiring, not actual Burp/Decepticon |
 | Source lock checks | PASS — eight pinned checkouts | Source status, not service deployment |
-| Target pre-flight | PASS — 14 tests | One TCP connect plus an HTTP HEAD; never a scan |
+| Target pre-flight | PASS — 15 tests | One TCP connect plus an HTTP HEAD; never a scan |
+| Engagement stage catalog | PASS — 15 tests | 19 stages across 8 groups, each reporting this worker's real readiness |
 | Path quoting regression | PASS — 5 tests | Guards the shell=True command strings against paths with spaces |
 | macOS arsenal install | PASS — 18 tools verified on PATH | Prebuilt binaries preferred; source builds are opt-in |
 | MCP adapter onboarding | PASS — 113 tools listed over stdio | 90 generated adapters + 23 control tools; schemas are real, execution still needs the binary |
@@ -64,7 +65,7 @@ volume, since Homebrew always installs into `/opt/homebrew`.
 
 Measured after the move:
 - 148 Python tests and 27 JavaScript tests pass from the new location.
-- **30 of 90 adapters ready, 29 executables present** (11 at the start of the session).
+- **49 of 90 adapters ready, 48 executables present** (11 at the start of the session).
 - Real runs against an authorized local sample site (127.0.0.1:5005, Flask in Docker):
   `httpx` returned 200 with title and `Flask:3.1.8,Python:3.11.16`; `gobuster` with a
   SecLists wordlist returned **14 findings**, including an exposed `.env` (200),
