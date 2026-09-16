@@ -3,7 +3,7 @@
 
 | Check actually run | Result | Boundary |
 | --- | --- | --- |
-| Python unittest discovery | PASS — 164 tests | API, evidence, synthetic lab transport, installers, MCP, scope |
+| Python unittest discovery | PASS — 182 tests | API, evidence, synthetic lab transport, installers, MCP, scope |
 | Node UI regressions | PASS — 27 tests | Workflows, provider states, command fields/dropdowns/confirmation/errors |
 | pip check | PASS | Existing Python 3.11 core environment |
 | JS/shell syntax | PASS | Three UI scripts and startup/bootstrap/installers |
@@ -13,6 +13,7 @@
 | Source lock checks | PASS — eight pinned checkouts | Source status, not service deployment |
 | Target pre-flight | PASS — 15 tests | One TCP connect plus an HTTP HEAD; never a scan |
 | Engagement stage catalog | PASS — 15 tests | 19 stages across 8 groups, each reporting this worker's real readiness |
+| Finding extraction and narrative | PASS — 18 tests | Findings parsed in Python; the model narrates only those facts and invented paths are flagged |
 | Path quoting regression | PASS — 5 tests | Guards the shell=True command strings against paths with spaces |
 | macOS arsenal install | PASS — 18 tools verified on PATH | Prebuilt binaries preferred; source builds are opt-in |
 | MCP adapter onboarding | PASS — 113 tools listed over stdio | 90 generated adapters + 23 control tools; schemas are real, execution still needs the binary |
@@ -85,6 +86,38 @@ Fixed this session:
 - The macOS installer linked every console script from its tools venv into `tools/bin`,
   which replaced the real ProjectDiscovery `httpx` binary with the Python httpx library's
   CLI. It now links only the scripts a package declares and never overwrites a real binary.
+
+## Accuracy check against the operator's sample site (2026-09-16)
+
+The site at 127.0.0.1:5005 ("Meridian Freight Solutions") is a deliberately
+vulnerable Flask lab target in Docker. Every reported finding was re-fetched
+independently with curl and compared on both status code and byte size.
+
+**gobuster, 4,751-word list: 14 findings, 14 exact matches, 0 false positives.**
+Status code and response size agreed on every row, including `/.env` (200, 262 B),
+`/admin` (403), `/backups` (308 → `/backups/`), `/uploads` (308) and `/portal`
+(302 → `/portal/login`).
+
+**False-negative check.** `robots.txt` discloses `/internal/` and `/status/`.
+Both words are present in the wordlist and both actually return 404, so gobuster
+was right to omit them: they are decoys, not misses. What gobuster genuinely did
+not reach were second-level paths (`/portal/login`, `/services/quote`), which a
+non-recursive directory scan cannot find by design.
+
+**katana, depth 3: 14 URLs, all genuine.** It recovered exactly the second-level
+paths gobuster could not, plus `/api/v1/shipments/`, which is referenced from
+JavaScript as `fetch('/api/v1/shipments/' + reference)`. A bare request to that
+path returns 404, but the route is real: it answers with
+`{"error":"Consignment not found."}` rather than the site's HTML 404 page. A
+status-code check alone would have wrongly called it a false positive.
+
+The two tools are complementary: brute force finds unlinked paths, the crawler
+finds linked and parameterised ones. Neither is complete alone, and HANZO does not
+present either as complete.
+
+**Confirmed real exposures on the lab target:** `/.env` served in plain text with
+signing keys and an AWS-style key id; `/backups/` with directory listing including
+`meridian-db-export.sql`; `/uploads/` with directory listing including `cv.php`.
 
 ## Known environment limits observed here
 The boot disk filled twice during this session. Homebrew on macOS 13 is a Tier 3 configuration and compiles

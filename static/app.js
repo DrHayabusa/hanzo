@@ -274,13 +274,21 @@ function renderIntegrations(data) {
   $("#hubInstalled").textContent = summary.source_cloned ?? 0;
   const core = state.integrations.filter((item) => ["hexstrike", "cve_mcp", "claude_bughunter"].includes(item.id));
   $("#overviewMcp").textContent = `${core.filter((item) => ["online", "ready"].includes(item.status)).length} / ${core.length} ready`;
+  const TRANSPORTS = {
+    native: "Embedded in this worker; its routes are called directly.",
+    mcp_stdio: "Spoken to over stdio MCP: the process starts per call, no port is held.",
+    mcp_sse: "Spoken to over SSE MCP at a configured URL.",
+    cli: "Invoked as a command-line program on this worker.",
+    http: "Reached over HTTP at a configured URL; deployed separately.",
+  };
   const labels = { online: "online", ready: "ready", reachable: "TCP reachable", installed: "executable found", source_ready: "source cloned", needs_config: "needs setup", not_installed: "not installed", error: "error" };
   $("#integrationCards").innerHTML = state.integrations.map((item) => `
     <article class="integration-card">
       <div><span class="integration-kind">${escapeHtml(item.kind)}</span><h4>${escapeHtml(item.label)}</h4></div>
       <span class="integration-status ${escapeHtml(item.status)}">${escapeHtml(labels[item.status] || item.status)}</span>
       <p>${escapeHtml(item.role)}</p>
-      <div class="adapter-proof">${item.execution_integrated ? "CALLABLE BRIDGE" : "OPTIONAL · EXTERNAL RUNTIME"}</div>
+      <div class="adapter-proof ${item.execution_integrated ? "is-live" : ""}">${item.execution_integrated ? "CALLABLE FROM HANZO" : "SOURCE PINNED · EXTERNAL RUNTIME"}</div>
+      <div class="integration-wiring">${escapeHtml(TRANSPORTS[item.kind] || item.kind)}</div>
       <div class="phase-list">${(item.phases || []).map((phase) => `<span>${escapeHtml(phase)}</span>`).join("")}</div>
       <small>${escapeHtml(item.message || item.endpoint || item.command || item.notes || "Run the integration installer")}</small>
       ${(item.tool_count || item.skill_count) ? `<div class="adapter-proof">${item.tool_count ? `${escapeHtml(item.tool_count)} MCP TOOLS` : ""}${item.skill_count ? `${escapeHtml(item.skill_count)} SKILLS` : ""}</div>` : ""}
@@ -288,7 +296,44 @@ function renderIntegrations(data) {
     </article>`).join("") || '<div class="no-processes">No integrations registered.</div>';
 }
 
+/* Counts come from the worker, never from this file, so the page cannot claim
+   more than the host actually has. */
+async function loadSystemStats(silent = true) {
+  const band = $("#statBand");
+  if (!band) return;
+  try {
+    const data = await api("/api/system/stats");
+    const adapters = data.adapters || {};
+    const stages = data.stages || {};
+    const tiles = [
+      { label: "Tool adapters ready", value: `${adapters.ready ?? 0}`, of: `of ${adapters.total ?? 0}`,
+        ratio: (adapters.ready || 0) / Math.max(1, adapters.total || 1) },
+      { label: "Distinct executables", value: `${adapters.executables ?? 0}`, of: "on PATH" },
+      { label: "Engagement stages", value: `${stages.total ?? 0}`, of: `${stages.groups ?? 0} groups` },
+      { label: "Wordlists discovered", value: `${(data.wordlists || {}).total ?? 0}`, of: "readable files" },
+      { label: "Pinned source repos", value: `${(data.sources || {}).pinned_repositories ?? 0}`, of: "reviewed revisions" },
+    ];
+    band.innerHTML = tiles.map((tile) => `
+      <div class="stat-tile">
+        <span>${escapeHtml(tile.label)}</span>
+        <strong>${escapeHtml(tile.value)}</strong>
+        <small>${escapeHtml(tile.of)}</small>
+        ${tile.ratio === undefined ? "" : `<div class="bar" role="img" aria-label="${Math.round(tile.ratio * 100)} percent ready"><i style="width:${Math.max(2, Math.round(tile.ratio * 100))}%"></i></div>`}
+      </div>`).join("");
+    $("#categoryReadiness").innerHTML = (adapters.by_category || []).map((group) => {
+      const percent = Math.round((group.ready / Math.max(1, group.total)) * 100);
+      return `<div class="category-row"><b>${escapeHtml(group.label)}</b>
+        <div class="bar" role="img" aria-label="${percent} percent ready"><i style="width:${Math.max(2, percent)}%"></i></div>
+        <span>${group.ready}/${group.total}</span></div>`;
+    }).join("");
+    $("#statsNote").textContent = data.note || "";
+  } catch (error) {
+    band.innerHTML = `<div class="empty-compact">Inventory unavailable: ${escapeHtml(error.message)}</div>`;
+    if (!silent) showToast(error.message, true);
+  }
+}
 async function loadIntegrations(silent = true) {
+  loadSystemStats(true);
   let integrationError = null;
   try {
     const data = await api("/api/redteam/integrations?probe=true");
@@ -600,7 +645,9 @@ async function loadReports(silent = false) {
 function openReport(id) {
   const run = state.reports.find((item) => item.id === id);
   if (!run) return;
-  state.selectedReport = run; showView("reports");
+  state.selectedReport = run; state.narrative = null;
+  $("#narrativeBlock").classList.add("hidden");
+  showView("reports");
   $("#reportDetail").classList.remove("hidden");
   $("#reportDetailJson").textContent = JSON.stringify(run, null, 2);
   $("#reportDetail").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -696,6 +743,75 @@ async function checkTargetReadiness() {
 }
 $("#refreshReports").addEventListener("click", () => loadReports());
 $("#reportPurge").addEventListener("click", () => purgeReports());
+$("#refreshStats")?.addEventListener("click", () => loadSystemStats(false));
+$("#writeNarrative").addEventListener("click", () => writeNarrative());
+$("#downloadNarrative").addEventListener("click", () => downloadNarrative());
+/* Findings are extracted by the worker; the model only narrates them. Both the
+   prose and the facts it was given are shown, so a reader can check it. */
+async function writeNarrative() {
+  const run = state.selectedReport;
+  if (!run) return showToast("Open a report first", true);
+  const button = $("#writeNarrative");
+  const block = $("#narrativeBlock");
+  button.disabled = true;
+  block.classList.remove("hidden");
+  $("#narrativeStatus").textContent = "Extracting findings, then asking the local model to write them up…";
+  $("#narrativeText").textContent = "";
+  $("#narrativeFindings").innerHTML = "";
+  try {
+    const data = await api("/api/reports/narrative", { method: "POST", body: JSON.stringify({ run_id: run.id }) });
+    state.narrative = data;
+    const counts = data.counts || {};
+    const sources = Object.entries(counts.by_source || {}).map(([k, v]) => `${v} from ${k}`).join(", ");
+    $("#narrativeStatus").textContent = [
+      data.message || "",
+      `${counts.total ?? 0} observation(s)${sources ? ` (${sources})` : ""}, ${counts.noteworthy ?? 0} noteworthy.`,
+      data.model ? `Written by ${data.model} running locally.` : "",
+    ].filter(Boolean).join(" ");
+    $("#narrativeText").textContent = data.narrative || "";
+    if ((data.unverified_paths || []).length) {
+      const warning = document.createElement("p");
+      warning.className = "narrative-warning";
+      warning.textContent = `Not supported by the findings: ${data.unverified_paths.join(", ")}`;
+      $("#narrativeText").append(warning);
+    }
+    $("#narrativeFindings").innerHTML = (data.findings || []).map((item) => `
+      <div class="finding-row">
+        <code>${escapeHtml(item.path)}</code>
+        <span>${item.status === null || item.status === undefined ? "—" : escapeHtml(String(item.status))}</span>
+        <span>${item.size === null || item.size === undefined ? "" : escapeHtml(String(item.size)) + " B"}</span>
+        <small>${escapeHtml(item.note || item.evidence || "")}</small>
+        <em>${escapeHtml(item.source || "")}</em>
+      </div>`).join("") || '<div class="empty-compact">No findings were extracted from this run.</div>';
+    $("#downloadNarrative").disabled = !data.narrative && !(data.findings || []).length;
+  } catch (error) {
+    $("#narrativeStatus").textContent = `Could not write the report: ${error.message}`;
+  } finally { button.disabled = false; }
+}
+function downloadNarrative() {
+  const data = state.narrative;
+  if (!data) return;
+  const rows = (data.findings || []).map((item) =>
+    `| \`${item.path}\` | ${item.status ?? "—"} | ${item.size ?? ""} | ${item.note || item.evidence || ""} | ${item.source || ""} |`).join("\n");
+  const markdown = [
+    `# Findings — ${data.asset || ""}`,
+    "", `Stage: ${data.phase_label || data.phase || ""}`,
+    `Report ID: ${data.run_id}`,
+    data.model ? `Narrative written locally by ${data.model} from the extracted findings below.` : "",
+    "", "## Summary", "", data.narrative || "_No narrative was generated._",
+    "", "## Observations", "",
+    "| Path | Status | Size | Note | Found by |", "| --- | --- | --- | --- | --- |", rows,
+    "", "## Tools that ran", "",
+    ...(data.tools || []).map((t) => `- ${t.tool} (exit ${t.return_code}): ${t.findings} result(s)`),
+    "", "_Observations are parsed from real tool output. A listed path is what the tool reported; it is not by itself proof of a vulnerability._",
+  ].filter((line) => line !== undefined).join("\n");
+  const blob = new Blob([markdown], { type: "text/markdown" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `hanzo-findings-${data.run_id}.md`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
 document.addEventListener("click", (event) => { const button = event.target.closest("[data-report]"); if (button) openReport(button.dataset.report); });
 document.addEventListener("click", (event) => { const button = event.target.closest("[data-delete-report]"); if (button) deleteReport(button.dataset.deleteReport, button); });
 async function deleteReport(id, button) {

@@ -42,6 +42,8 @@ README.md; docs/PROGRESS.md; PROJECT_PLAN.md; docs/VALIDATION_REPORT.md; docs/CE
 | wordlists.py | Discovers wordlists that actually exist; classifies and validates operator paths |
 | assessment_preflight.py | Validates, reaches and reports stage readiness for a target before any scanner runs |
 | pentest_stages.py | The engagement stage catalog: 19 stages, their adapters, objectives and proper names |
+| findings.py | Deterministic extraction of structured findings from raw scanner output |
+| static/refinements.css | Visual layer over styles.css; removable without breaking any view |
 | optional_mcp.py / optional_mcp_api.py | stdio/SSE/Streamable HTTP bridge, allowlists, limits, redaction, routes |
 | hanzo_store.py | SQLite workflow/exercise evidence and credential-field redaction |
 | scan_scope.py | Conservative single-target validation for automated smart scan |
@@ -114,3 +116,63 @@ Existing reference: DrHayabusa/HELPAG-VAPT-Test-Site. User wants a separate CTF-
 
 ## Prompt for Claude
 “Read CLAUDE.md, CONTINUATION.md, PROJECT_PLAN.md, docs/PROGRESS.md and docs/VALIDATION_REPORT.md. Inspect git status, run tests, and continue the highest-priority open HANZO work. Preserve existing UI and truthful integration readiness. Website is deferred until requested. Keep code, progress and acceptance evidence committed and pushed.”
+
+## Handoff notes (2026-09-16)
+
+Where things stand, for whoever picks this up next.
+
+### Run it
+
+```bash
+cd "/Volumes/shuaibs/Shahid project/hanzo"
+bash start_vapt_agent.sh          # worker on :8888, Ollama on :11434
+.venv311/bin/python -m unittest discover -s tests
+node --test tests/test_*ui.js
+```
+
+The project lives on an external volume because the boot disk is full. The path
+contains a space, which has already caused two classes of bug — see "Traps" below.
+
+### The four catalogs, and why they matter
+
+Everything is generated from a small number of read-only sources. Change the
+source, not the consumers.
+
+| Source | Owns | Consumed by |
+| --- | --- | --- |
+| `arsenal_catalog.py` | The 90 tool adapters, their fields and readiness | Browser launcher, `arsenal_mcp.py`, preflight, stats |
+| `pentest_stages.py` | The 19 engagement stages | Test target menu, preflight, evidence-store phase validation |
+| `wordlists.py` | Wordlists that actually exist | Every wordlist field, MCP `list_wordlists` |
+| `integrations.lock.json` | Pinned upstream revisions | `redteam_hub.py`, doctor, stats |
+
+Adding a stage means editing `pentest_stages.py` only. Adding an adapter means
+adding a route to `hexstrike_server.py`; the catalog picks it up by AST parsing.
+
+### Traps that have already bitten
+
+1. **Spaces in the project path.** Adapters build shell strings for `shell=True`.
+   Any new adapter that interpolates a filesystem path must wrap it in `_q()`
+   (`hexstrike_server.py`), or the path splits at the space. Guarded by
+   `tests/test_command_quoting.py`.
+2. **Shebangs cannot contain spaces.** Never symlink a pip console script into
+   `tools/bin`; write a `/bin/sh` wrapper. `scripts/install_macos_arsenal.sh`
+   does this already.
+3. **Homebrew on macOS 13 is Tier 3** and compiles from source, which twice
+   exhausted the boot disk. Prefer prebuilt release binaries into `tools/bin`.
+   The installer stops at a 1.2 GB floor.
+4. **Readiness depends on PATH.** `build_catalog` run from a plain shell reports
+   fewer tools than the server, whose PATH includes `tools/bin`. The API is
+   authoritative.
+5. **Never let the model decide what was found.** `findings.py` extracts; the
+   model only narrates, and `/api/reports/narrative` flags any path in the prose
+   that is not in the findings.
+
+### Deliberately not done
+
+The autonomous LLM-driven scanning loop. The assistant is advisory, stages are
+operator-selected, and every executing stage requires explicit authorization. If
+you build it, keep the approval checkpoint and the evidence trail intact.
+
+Also open: the API & token analysis category is 0/4 on macOS (needs `x8`,
+which has no macOS release), and Advanced lab simulation is 0/2 (Metasploit).
+Both are expected to work on the Kali worker.

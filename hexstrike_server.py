@@ -73,8 +73,10 @@ from optional_mcp_api import create_optional_mcp_blueprint
 from arsenal_catalog import build_catalog
 from scan_scope import validate_scan_target
 import wordlists as wordlist_catalog
+import wordlists as wordlist_catalog_module
 import assessment_preflight
 import pentest_stages
+import findings as findings_module
 
 # ============================================================================
 # LOGGING CONFIGURATION (MUST BE FIRST)
@@ -174,6 +176,128 @@ def arsenal_wordlists():
     """List wordlists that actually exist on this worker. Never invents a path."""
     fresh = request.args.get("refresh", "").lower() in {"1", "true", "yes"}
     return jsonify(wordlist_catalog.discover(PROJECT_DIR, use_cache=not fresh))
+
+
+@app.post("/api/reports/narrative")
+def report_narrative_route():
+    """Draft a readable findings narrative from a stored run.
+
+    Findings are extracted in Python. The model is shown only those extracted
+    facts, never raw tool output, and is told not to add anything. The response
+    always carries the facts alongside the prose so a reader can check it.
+    """
+    payload = request.get_json(silent=True) or {}
+    run_id = str(payload.get("run_id", "")).strip()
+    if not run_id:
+        return jsonify({"error": "run_id is required"}), 400
+    run = next((item for item in hanzo_store.recent(100) if item["id"] == run_id), None)
+    if run is None:
+        return jsonify({"error": "No stored report has that id."}), 404
+
+    collected = findings_module.collect(run.get("result") or {})
+    facts = findings_module.as_facts(run.get("asset", ""), collected)
+    response_body = {
+        "run_id": run_id,
+        "asset": run.get("asset"),
+        "phase": run.get("phase"),
+        "phase_label": pentest_stages.label_for(run.get("phase")),
+        "findings": collected["findings"],
+        "tools": collected["tools"],
+        "counts": collected["counts"],
+        "facts": facts,
+    }
+
+    if not collected["findings"] and not collected["tools"]:
+        return jsonify({**response_body, "narrative": None,
+                        "narrative_status": "no_findings",
+                        "message": "This run produced no parsable tool output, so there is nothing to narrate."})
+
+    model = str(payload.get("model") or OLLAMA_MODEL).strip()
+    try:
+        completion = requests.post(
+            f"{OLLAMA_URL}/api/chat",
+            json={"model": model,
+                  "messages": [{"role": "system", "content": findings_module.REPORT_PROMPT},
+                               {"role": "user", "content": facts}],
+                  "stream": False, "think": False,
+                  "options": {"temperature": 0.1, "num_predict": 700}},
+            timeout=240)
+        completion.raise_for_status()
+        narrative = str(((completion.json().get("message") or {}).get("content") or "")).strip()
+    except requests.RequestException as error:
+        return jsonify({**response_body, "narrative": None,
+                        "narrative_status": "model_unavailable",
+                        "message": f"The findings above are complete; the local model could not be reached to narrate them ({error})."})
+
+    if not narrative:
+        return jsonify({**response_body, "narrative": None,
+                        "narrative_status": "empty_reply",
+                        "message": "The model returned nothing. The extracted findings above still stand."})
+
+    # A path in the prose that is not in the findings means the model invented it.
+    # Full URLs are stripped first so their "//" is not read as a path.
+    known = {item["path"] for item in collected["findings"]}
+    scannable = re.sub(r"https?://\S+", " ", narrative)
+    quoted = {path.rstrip(".,;:)!?'\"")
+              for path in re.findall(r"(?<![\w/])/[A-Za-z0-9._~-][A-Za-z0-9._~\-/]{0,80}", scannable)}
+    invented = sorted(path for path in quoted
+                      if path not in known and not any(path.rstrip("/") in item for item in known))
+    return jsonify({**response_body, "narrative": narrative,
+                    "narrative_status": "drafted",
+                    "model": model,
+                    "unverified_paths": invented,
+                    "message": ("Drafted by the local model from the extracted findings only."
+                                if not invented else
+                                "Drafted by the local model. It mentioned paths that are not in the "
+                                "extracted findings; they are listed in unverified_paths and should not "
+                                "be trusted.")})
+
+
+@app.get("/api/system/stats")
+def system_stats_route():
+    """What is actually onboarded on this worker, counted rather than asserted."""
+    catalog = build_catalog(PROJECT_DIR)
+    commands = [command for group in catalog.get("categories") or []
+                for command in group.get("commands") or []]
+    ready = [command for command in commands if command.get("installed") is True]
+    stages = pentest_stages.all_stages()
+    try:
+        wordlist_catalog = wordlist_catalog_module.discover(PROJECT_DIR)
+        wordlist_count = wordlist_catalog.get("count", 0)
+    except Exception:
+        wordlist_count = 0
+    try:
+        locked = json.loads((Path(PROJECT_DIR) / "integrations.lock.json").read_text())
+        repositories = locked.get("repositories") or []
+    except (OSError, ValueError):
+        repositories = []
+    return jsonify({
+        "adapters": {
+            "total": len(commands),
+            "ready": len(ready),
+            "executables": len({command.get("tool") for command in ready}),
+            "categories": len(catalog.get("categories") or []),
+            "by_category": [
+                {"id": group.get("id"), "label": group.get("label"),
+                 "total": len(group.get("commands") or []),
+                 "ready": sum(1 for command in group.get("commands") or []
+                              if command.get("installed") is True)}
+                for group in catalog.get("categories") or []
+            ],
+        },
+        "stages": {"total": len(stages),
+                   "groups": len(pentest_stages.groups()),
+                   "executing": sum(1 for stage in stages if stage["executes"])},
+        "wordlists": {"total": wordlist_count},
+        "sources": {"pinned_repositories": len(repositories),
+                    "revisions": [{"directory": item.get("directory"),
+                                   "url": item.get("url"),
+                                   "revision": str(item.get("revision", ""))[:12],
+                                   "profile": item.get("profile")}
+                                  for item in repositories]},
+        "note": "Counts come from this worker's filesystem and PATH. A ready adapter means "
+                "its executable was found, not that the command or its credentials work.",
+    })
 
 
 @app.get("/api/assessment/stages")
